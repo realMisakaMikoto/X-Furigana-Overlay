@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="#111111"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/text_privacy_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:lineSpacingExtra="3dp"
+            android:text="本工具会通过无障碍权限读取目标 App 当前屏幕文本，仅用于本地筛选日文 post。只有你点击某条 post 后，才会把该条文本发送到你配置的 LLM API。"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/text_accessibility_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:textColor="#111111"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/button_accessibility_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="开启无障碍设置" />
+
+        <TextView
+            android:id="@+id/text_overlay_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:textColor="#111111"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/button_overlay_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="开启悬浮窗权限设置" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="API 配置"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/spinner_api_profiles"
+            android:layout_width="match_parent"
+            android:layout_height="48dp" />
+
+        <EditText
+            android:id="@+id/edit_api_profile_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="配置名称，例如 OpenAI / 自建网关"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/button_add_api_profile"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="新增 API" />
+
+            <Button
+                android:id="@+id/button_delete_api_profile"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="删除 API" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="LLM API Base URL"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/edit_api_base_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://api.openai.com/v1/chat/completions"
+            android:importantForAutofill="no"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="API Key"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/edit_api_key"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="sk-..."
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="模型名"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/edit_model"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="gpt-4.1-mini"
+            android:importantForAutofill="no"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="目标包名列表"
+            android:textColor="#222222"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/edit_target_packages"
+            android:layout_width="match_parent"
+            android:layout_height="96dp"
+            android:gravity="top|start"
+            android:hint="com.twitter.android&#10;com.x.android"
+            android:importantForAutofill="no"
+            android:inputType="textMultiLine"
+            android:textSize="14sp" />
+
+        <Switch
+            android:id="@+id/switch_enabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="启用服务"
+            android:textColor="#111111"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/button_save_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="保存设置" />
+
+        <Button
+            android:id="@+id/button_show_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="显示悬浮按钮" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/button_open_notes"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="查看笔记" />
+
+            <Button
+                android:id="@+id/button_open_wordbook"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="查看单词本" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_usage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:lineSpacingExtra="3dp"
+            android:text="使用方法：\n1. 保存 API Base URL、API Key 和模型名。\n2. 开启显示在其他应用上层权限。\n3. 开启本应用无障碍服务。\n4. 打开 X / Twitter，点击悬浮按钮「ふ」。\n5. 选择一条日文 post 后生成注音。"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</ScrollView>

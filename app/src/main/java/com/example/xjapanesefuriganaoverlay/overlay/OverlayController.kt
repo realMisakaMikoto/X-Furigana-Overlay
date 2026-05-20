@@ -1,0 +1,777 @@
+package com.example.xjapanesefuriganaoverlay.overlay
+
+import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.provider.Settings
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewConfiguration
+import android.view.WindowManager
+import android.webkit.WebView
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import com.example.xjapanesefuriganaoverlay.AddWordActivity
+import com.example.xjapanesefuriganaoverlay.data.CurrentPostRepository
+import com.example.xjapanesefuriganaoverlay.data.DetectedPost
+import com.example.xjapanesefuriganaoverlay.data.FuriganaCache
+import com.example.xjapanesefuriganaoverlay.data.NoteRepository
+import com.example.xjapanesefuriganaoverlay.data.SettingsRepository
+import com.example.xjapanesefuriganaoverlay.furigana.FuriganaClient
+import com.example.xjapanesefuriganaoverlay.furigana.FuriganaAnnotation
+import com.example.xjapanesefuriganaoverlay.furigana.FuriganaAnnotationCodec
+import com.example.xjapanesefuriganaoverlay.furigana.RubyAnnotationExtractor
+import com.example.xjapanesefuriganaoverlay.furigana.RubyHtmlRenderer
+import com.example.xjapanesefuriganaoverlay.japanese.JapaneseTextDetector
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+@SuppressLint("StaticFieldLeak")
+object OverlayController {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var windowManager: WindowManager? = null
+    private var buttonView: View? = null
+    private var panelView: FrameLayout? = null
+    private var panelContentView: LinearLayout? = null
+    private var panelParams: WindowManager.LayoutParams? = null
+    private var lastPanelWidth = 0
+    private var lastPanelHeight = 0
+    private var lastPanelX = UNSET_POSITION
+    private var lastPanelY = UNSET_POSITION
+    private var currentCopyHtml: String? = null
+    private var currentCopyText: String? = null
+
+    fun showButton(context: Context) {
+        val appContext = context.applicationContext
+        if (!Settings.canDrawOverlays(appContext)) return
+        if (buttonView != null) return
+
+        val wm = appContext.windowManager()
+        windowManager = wm
+        val button = OverlayButtonView(appContext).apply {
+            text = "ふ"
+            textSize = 24f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = ovalDrawable(Color.rgb(29, 155, 240), Color.WHITE)
+            elevation = dp(appContext, 8).toFloat()
+        }
+
+        val params = WindowManager.LayoutParams(
+            dp(appContext, 56),
+            dp(appContext, 56),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(appContext, 16)
+            y = dp(appContext, 120)
+        }
+
+        button.setOnClickListener { togglePanel(appContext) }
+        button.setOnTouchListener(DraggableTouchListener(wm, params))
+
+        runCatching {
+            wm.addView(button, params)
+            buttonView = button
+        }
+    }
+
+    fun hideButton() {
+        val view = buttonView ?: return
+        runCatching { windowManager?.removeView(view) }
+        buttonView = null
+    }
+
+    fun hidePanel() {
+        val view = panelView ?: return
+        panelParams?.let { rememberPanelBounds(it) }
+        destroyWebViews(view)
+        runCatching { windowManager?.removeView(view) }
+        panelView = null
+        panelContentView = null
+        panelParams = null
+        currentCopyHtml = null
+        currentCopyText = null
+    }
+
+    fun hideAll() {
+        hidePanel()
+        hideButton()
+    }
+
+    private fun togglePanel(context: Context) {
+        if (panelView != null) {
+            hidePanel()
+        } else {
+            showPanel(context)
+        }
+    }
+
+    private fun showPanel(context: Context) {
+        val appContext = context.applicationContext
+        if (!Settings.canDrawOverlays(appContext)) return
+        if (panelView != null) return
+        val wm = appContext.windowManager()
+        windowManager = wm
+
+        val metrics = appContext.resources.displayMetrics
+        val defaultWidth = (metrics.widthPixels * 0.9f).toInt()
+        val defaultHeight = (metrics.heightPixels * 0.6f).toInt()
+        val minWidth = dp(appContext, 280)
+        val minHeight = dp(appContext, 260)
+        val width = clamp(
+            if (lastPanelWidth > 0) lastPanelWidth else defaultWidth,
+            minWidth,
+            metrics.widthPixels
+        )
+        val height = clamp(
+            if (lastPanelHeight > 0) lastPanelHeight else defaultHeight,
+            minHeight,
+            metrics.heightPixels
+        )
+        val x = if (lastPanelX != UNSET_POSITION) {
+            clamp(lastPanelX, 0, metrics.widthPixels - width)
+        } else {
+            (metrics.widthPixels - width) / 2
+        }
+        val y = if (lastPanelY != UNSET_POSITION) {
+            clamp(lastPanelY, 0, metrics.heightPixels - height)
+        } else {
+            ((metrics.heightPixels - height) * 0.35f).toInt()
+        }
+
+        val params = WindowManager.LayoutParams(
+            width,
+            height,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x
+            this.y = y
+        }
+        panelParams = params
+
+        val container = FrameLayout(appContext)
+        val root = LinearLayout(appContext).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                dp(appContext, 10),
+                dp(appContext, 10),
+                dp(appContext, 10),
+                dp(appContext, 10)
+            )
+            background = roundedDrawable(Color.argb(235, 20, 24, 30), dp(appContext, 8).toFloat())
+        }
+        container.addView(
+            root,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        container.addView(
+            resizeHandle(appContext, wm, params, minWidth, minHeight),
+            FrameLayout.LayoutParams(
+                dp(appContext, 36),
+                dp(appContext, 36),
+                Gravity.BOTTOM or Gravity.END
+            )
+        )
+        panelContentView = root
+        renderList(appContext, root)
+
+        runCatching {
+            wm.addView(container, params)
+            panelView = container
+        }.onFailure {
+            panelContentView = null
+            panelParams = null
+            Toast.makeText(appContext, "无法显示悬浮面板：${it.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun renderList(context: Context, root: LinearLayout) {
+        currentCopyHtml = null
+        currentCopyText = null
+        root.removeAllViews()
+
+        root.addView(headerRow(context, "当前屏幕日文 post") {
+            smallButton(context, "关闭").apply { setOnClickListener { hidePanel() } }
+        })
+
+        val scrollView = ScrollView(context)
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        scrollView.addView(
+            list,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val posts = CurrentPostRepository.getPosts()
+        if (posts.isEmpty()) {
+            list.addView(emptyText(context, "当前屏幕暂无候选日文 post"))
+        } else {
+            posts.forEach { post ->
+                list.addView(postRow(context, post) {
+                    renderResult(context, root, post)
+                })
+            }
+        }
+
+        root.addView(
+            scrollView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+    }
+
+    private fun renderResult(context: Context, root: LinearLayout, post: DetectedPost) {
+        currentCopyHtml = null
+        currentCopyText = null
+        root.removeAllViews()
+
+        val copyButton = smallButton(context, "复制").apply {
+            isEnabled = false
+            setOnClickListener { copyCurrentResult(context) }
+        }
+        val wordButton = smallButton(context, "加词").apply {
+            isEnabled = false
+        }
+        root.addView(headerRow(context, "注音结果") {
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(smallButton(context, "返回列表").apply {
+                    setOnClickListener { renderList(context, root) }
+                })
+                addView(copyButton)
+                addView(wordButton)
+                addView(smallButton(context, "关闭").apply {
+                    setOnClickListener { hidePanel() }
+                })
+            }
+        })
+
+        val contentFrame = FrameLayout(context)
+        val webView = WebView(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            settings.javaScriptEnabled = false
+            settings.domStorageEnabled = false
+            visibility = View.INVISIBLE
+        }
+        val progress = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(ProgressBar(context))
+            addView(emptyText(context, "生成中..."))
+        }
+        contentFrame.addView(
+            webView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        contentFrame.addView(
+            progress,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        root.addView(
+            contentFrame,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        if (!JapaneseTextDetector.isLikelyJapanesePost(post.text)) {
+            showError(progress, "这条文本未通过日文 post 过滤，已取消请求。")
+            return
+        }
+
+        val settingsRepository = SettingsRepository(context)
+        val cache = FuriganaCache(context)
+        val cached = cache.get(post.text, settingsRepository.model)
+        if (cached != null) {
+            showHtml(webView, progress, cached.rubyHtml, post.text)
+            val cachedAnnotations = FuriganaAnnotationCodec.decode(cached.annotationHintsJson)
+                .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(post.text, cached.rubyHtml) }
+            NoteRepository(context).saveNote(
+                originalText = post.text,
+                rubyHtml = cached.rubyHtml,
+                plainText = post.text,
+                modelName = settingsRepository.model,
+                annotationHintsJson = cached.annotationHintsJson
+            )
+            copyButton.isEnabled = true
+            wordButton.isEnabled = true
+            wordButton.setOnClickListener {
+                openManualAddWord(context, post.text, cachedAnnotations)
+            }
+            return
+        }
+
+        scope.launch {
+            val result = FuriganaClient(context).requestAnnotations(post.text)
+            if (panelContentView !== root) return@launch
+
+            result.fold(
+                onSuccess = { annotations ->
+                    val html = RubyHtmlRenderer.renderHtml(post.text, annotations)
+                    val plain = RubyHtmlRenderer.renderPlainText(post.text, annotations)
+                    val annotationHintsJson = FuriganaAnnotationCodec.encode(annotations)
+                    cache.put(post.text, settingsRepository.model, html, annotationHintsJson)
+                    NoteRepository(context).saveNote(
+                        originalText = post.text,
+                        rubyHtml = html,
+                        plainText = plain,
+                        modelName = settingsRepository.model,
+                        annotationHintsJson = annotationHintsJson
+                    )
+                    showHtml(webView, progress, html, plain)
+                    copyButton.isEnabled = true
+                    wordButton.isEnabled = true
+                    wordButton.setOnClickListener {
+                        openManualAddWord(context, post.text, annotations)
+                    }
+                },
+                onFailure = { throwable ->
+                    showError(progress, "生成失败：${throwable.message ?: throwable.javaClass.simpleName}")
+                }
+            )
+        }
+    }
+
+    private fun openManualAddWord(
+        context: Context,
+        sourceText: String,
+        annotations: List<FuriganaAnnotation>
+    ) {
+        val hints = org.json.JSONArray()
+        annotations
+            .distinctBy { "${it.start}:${it.end}:${it.surface}:${it.reading}" }
+            .forEach { annotation ->
+                hints.put(
+                    org.json.JSONObject()
+                        .put("s", annotation.surface)
+                        .put("r", annotation.reading)
+                        .put("b", annotation.start)
+                        .put("e", annotation.end)
+                )
+            }
+        val intent = Intent(context.applicationContext, AddWordActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(AddWordActivity.EXTRA_SOURCE_TEXT, sourceText)
+            .putExtra(AddWordActivity.EXTRA_READING_HINTS, hints.toString())
+        hidePanel()
+        context.applicationContext.startActivity(intent)
+    }
+
+    private fun showHtml(webView: WebView, progress: View, html: String, plainText: String) {
+        currentCopyHtml = html
+        currentCopyText = plainText
+        progress.visibility = View.GONE
+        webView.visibility = View.VISIBLE
+        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
+
+    private fun showError(progress: LinearLayout, message: String) {
+        progress.removeAllViews()
+        progress.addView(emptyText(progress.context, message))
+        progress.visibility = View.VISIBLE
+    }
+
+    private fun copyCurrentResult(context: Context) {
+        val html = currentCopyHtml
+        val text = currentCopyText ?: html
+        if (html.isNullOrBlank() || text.isNullOrBlank()) {
+            Toast.makeText(context, "暂无可复制内容", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newHtmlText("furigana", text, html))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun headerRow(context: Context, title: String, trailingFactory: () -> View): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(context, 8))
+
+            addView(
+                dragHandleBar(context),
+                LinearLayout.LayoutParams(
+                    dp(context, 72),
+                    dp(context, 5)
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setMargins(0, 0, 0, dp(context, 8))
+                }
+            )
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        TouchTextView(context).apply {
+                            text = title
+                            textSize = 16f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(Color.WHITE)
+                            maxLines = 1
+                            setOnTouchListener(panelMoveTouchListener(context))
+                        },
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    )
+                    addView(trailingFactory())
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+    }
+
+    private fun dragHandleBar(context: Context): View {
+        return View(context).apply {
+            background = roundedDrawable(Color.argb(210, 255, 255, 255), dp(context, 3).toFloat())
+            setOnTouchListener(panelMoveTouchListener(context))
+        }
+    }
+
+    private fun panelMoveTouchListener(context: Context): View.OnTouchListener {
+        return PanelMoveTouchListener(
+            context.windowManager(),
+            requireNotNull(panelParams)
+        )
+    }
+
+    private fun resizeHandle(
+        context: Context,
+        wm: WindowManager,
+        params: WindowManager.LayoutParams,
+        minWidth: Int,
+        minHeight: Int
+    ): TextView {
+        return TouchTextView(context).apply {
+            text = "↘"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = roundedDrawable(Color.argb(210, 29, 155, 240), dp(context, 8).toFloat())
+            setOnTouchListener(PanelResizeTouchListener(wm, params, minWidth, minHeight))
+        }
+    }
+
+    private fun postRow(context: Context, post: DetectedPost, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = post.text.take(100)
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setPadding(dp(context, 10), dp(context, 10), dp(context, 10), dp(context, 10))
+            background = roundedDrawable(Color.argb(170, 255, 255, 255), dp(context, 6).toFloat())
+            setOnClickListener { onClick() }
+            val margin = dp(context, 6)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, margin)
+            }
+        }
+    }
+
+    private fun emptyText(context: Context, message: String): TextView {
+        return TextView(context).apply {
+            text = message
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(context, 12), dp(context, 20), dp(context, 12), dp(context, 20))
+        }
+    }
+
+    private fun smallButton(context: Context, label: String): Button {
+        return Button(context).apply {
+            text = label
+            textSize = 12f
+            minHeight = 0
+            minWidth = 0
+            minimumHeight = 0
+            minimumWidth = 0
+            setPadding(dp(context, 8), 0, dp(context, 8), 0)
+        }
+    }
+
+    private fun destroyWebViews(view: View) {
+        if (view is WebView) {
+            view.stopLoading()
+            view.destroy()
+            return
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                destroyWebViews(view.getChildAt(index))
+            }
+        }
+    }
+
+    private fun Context.windowManager(): WindowManager {
+        return getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    }
+
+    private fun roundedDrawable(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius
+        }
+    }
+
+    private fun ovalDrawable(color: Int, strokeColor: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setStroke(2, strokeColor)
+        }
+    }
+
+    private fun dp(context: Context, value: Int): Int {
+        return (value * context.resources.displayMetrics.density).toInt()
+    }
+
+    private fun rememberPanelBounds(params: WindowManager.LayoutParams) {
+        lastPanelWidth = params.width
+        lastPanelHeight = params.height
+        lastPanelX = params.x
+        lastPanelY = params.y
+    }
+
+    private fun clamp(value: Int, minValue: Int, maxValue: Int): Int {
+        if (maxValue < minValue) return minValue
+        return value.coerceIn(minValue, maxValue)
+    }
+
+    private class DraggableTouchListener(
+        private val windowManager: WindowManager,
+        private val params: WindowManager.LayoutParams
+    ) : View.OnTouchListener {
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var moved = false
+        private var touchSlop = 0
+
+        override fun onTouch(view: View, event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    moved = false
+                    touchSlop = ViewConfiguration.get(view.context).scaledTouchSlop
+                    return true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - downRawX).toInt()
+                    val dy = (event.rawY - downRawY).toInt()
+                    if (!moved &&
+                        kotlin.math.abs(dx) <= touchSlop &&
+                        kotlin.math.abs(dy) <= touchSlop
+                    ) {
+                        return true
+                    }
+                    moved = true
+                    params.x = startX + dx
+                    params.y = startY + dy
+                    runCatching { windowManager.updateViewLayout(view, params) }
+                    return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) view.performClick()
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    moved = false
+                    return true
+                }
+            }
+            return false
+        }
+    }
+
+    private class PanelMoveTouchListener(
+        private val windowManager: WindowManager,
+        private val params: WindowManager.LayoutParams
+    ) : View.OnTouchListener {
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var moved = false
+        private var touchSlop = 0
+
+        override fun onTouch(view: View, event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    moved = false
+                    touchSlop = ViewConfiguration.get(view.context).scaledTouchSlop
+                    return true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - downRawX).toInt()
+                    val dy = (event.rawY - downRawY).toInt()
+                    if (!moved &&
+                        kotlin.math.abs(dx) <= touchSlop &&
+                        kotlin.math.abs(dy) <= touchSlop
+                    ) {
+                        return true
+                    }
+                    moved = true
+                    val metrics = view.context.resources.displayMetrics
+                    params.x = clamp(startX + dx, 0, metrics.widthPixels - params.width)
+                    params.y = clamp(startY + dy, 0, metrics.heightPixels - params.height)
+                    updatePanelLayout(windowManager, params)
+                    return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) view.performClick()
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    moved = false
+                    return true
+                }
+            }
+            return false
+        }
+    }
+
+    private class PanelResizeTouchListener(
+        private val windowManager: WindowManager,
+        private val params: WindowManager.LayoutParams,
+        private val minWidth: Int,
+        private val minHeight: Int
+    ) : View.OnTouchListener {
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startWidth = 0
+        private var startHeight = 0
+        private var moved = false
+        private var touchSlop = 0
+
+        override fun onTouch(view: View, event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startWidth = params.width
+                    startHeight = params.height
+                    moved = false
+                    touchSlop = ViewConfiguration.get(view.context).scaledTouchSlop
+                    return true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - downRawX).toInt()
+                    val dy = (event.rawY - downRawY).toInt()
+                    if (!moved &&
+                        kotlin.math.abs(dx) <= touchSlop &&
+                        kotlin.math.abs(dy) <= touchSlop
+                    ) {
+                        return true
+                    }
+                    moved = true
+                    val metrics = view.context.resources.displayMetrics
+                    val maxWidth = kotlin.math.max(minWidth, metrics.widthPixels - params.x)
+                    val maxHeight = kotlin.math.max(minHeight, metrics.heightPixels - params.y)
+                    params.width = clamp(startWidth + dx, minWidth, maxWidth)
+                    params.height = clamp(startHeight + dy, minHeight, maxHeight)
+                    updatePanelLayout(windowManager, params)
+                    return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) view.performClick()
+                    moved = false
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    moved = false
+                    return true
+                }
+            }
+            return false
+        }
+    }
+
+    private fun updatePanelLayout(
+        windowManager: WindowManager,
+        params: WindowManager.LayoutParams
+    ) {
+        panelView?.let { view ->
+            rememberPanelBounds(params)
+            runCatching { windowManager.updateViewLayout(view, params) }
+        }
+    }
+
+    private class OverlayButtonView(context: Context) : TouchTextView(context) {
+        override fun performClick(): Boolean {
+            return super.performClick()
+        }
+    }
+
+    private open class TouchTextView(context: Context) : TextView(context) {
+        override fun performClick(): Boolean {
+            super.performClick()
+            return true
+        }
+    }
+
+    private const val UNSET_POSITION = Int.MIN_VALUE
+}
