@@ -6,7 +6,7 @@
 
 ## 致谢
 
-感谢凉宫春日黑客松galcode项目对于本项目创作者的大量情绪价值。
+感谢凉宫春日黑客松galcode项目给予本项目创作者的大量情绪价值。
 项目地址：https://github.com/sjyinzju/Galcode_island
 
 ## 功能概览
