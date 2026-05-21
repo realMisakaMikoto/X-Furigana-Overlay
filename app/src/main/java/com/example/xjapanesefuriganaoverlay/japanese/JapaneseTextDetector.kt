@@ -1,6 +1,9 @@
 package com.example.xjapanesefuriganaoverlay.japanese
 
 object JapaneseTextDetector {
+    private val whitespaceRegex = Regex("\\s+")
+    private val pureCounterRegex = Regex("^[0-9０-９,.万億]+$")
+    private val unitCounterRegex = Regex("^[0-9０-９,.万億]+\\s*(件|回|人)$")
     private val uiExactTexts = setOf(
         "返信",
         "リポスト",
@@ -25,31 +28,51 @@ object JapaneseTextDetector {
     fun isLikelyJapanesePost(text: String): Boolean {
         val normalized = normalize(text)
         if (normalized.length < 3) return false
-        if (normalized in uiExactTexts) return false
-        if (isLikelyUiCounter(normalized)) return false
+        if (isObviousUiText(normalized)) return false
         if (normalized.startsWith("@")) return false
         if (normalized.startsWith("#") && normalized.length <= 20) return false
 
-        val hasKana = normalized.any { isHiragana(it) || isKatakana(it) }
-        val hasKanji = normalized.any { isKanji(it) }
+        var hasKana = false
+        var hasKanji = false
+        var meaningfulChars = 0
+        normalized.forEach { char ->
+            when {
+                isHiragana(char) || isKatakana(char) -> {
+                    hasKana = true
+                    meaningfulChars++
+                }
+                isKanji(char) -> {
+                    hasKanji = true
+                    meaningfulChars++
+                }
+            }
+        }
         if (!hasKana || !hasKanji) return false
 
-        val meaningfulChars = normalized.count { isHiragana(it) || isKatakana(it) || isKanji(it) }
         return meaningfulChars >= 3
     }
 
     fun containsKanji(text: String): Boolean = text.any { isKanji(it) }
 
+    fun containsKana(text: String): Boolean = text.any { isHiragana(it) || isKatakana(it) }
+
+    fun isObviousUiText(text: String): Boolean {
+        val normalized = normalize(text)
+        if (normalized in uiExactTexts) return true
+        if (isLikelyUiCounter(normalized)) return true
+        return uiExactTexts.any { ui ->
+            normalized.length <= ui.length + 6 && normalized.contains(ui)
+        }
+    }
+
     private fun normalize(text: String): String {
-        return text.replace(Regex("\\s+"), " ").trim()
+        return whitespaceRegex.replace(text, " ").trim()
     }
 
     private fun isLikelyUiCounter(text: String): Boolean {
-        if (text.matches(Regex("^[0-9０-９,.万億]+$"))) return true
-        if (text.matches(Regex("^[0-9０-９,.万億]+\\s*(件|回|人)$"))) return true
-        return uiExactTexts.any { ui ->
-            text.length <= ui.length + 6 && text.contains(ui)
-        }
+        if (pureCounterRegex.matches(text)) return true
+        if (unitCounterRegex.matches(text)) return true
+        return false
     }
 
     private fun isHiragana(char: Char): Boolean = char in '\u3040'..'\u309F'

@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -25,6 +26,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.example.xjapanesefuriganaoverlay.AddWordActivity
+import com.example.xjapanesefuriganaoverlay.accessibility.ScanMetrics
+import com.example.xjapanesefuriganaoverlay.accessibility.XFuriganaPerf
+import com.example.xjapanesefuriganaoverlay.accessibility.XTextAccessibilityService
 import com.example.xjapanesefuriganaoverlay.data.CurrentPostRepository
 import com.example.xjapanesefuriganaoverlay.data.DetectedPost
 import com.example.xjapanesefuriganaoverlay.data.FuriganaCache
@@ -36,9 +40,12 @@ import com.example.xjapanesefuriganaoverlay.furigana.FuriganaAnnotationCodec
 import com.example.xjapanesefuriganaoverlay.furigana.RubyAnnotationExtractor
 import com.example.xjapanesefuriganaoverlay.furigana.RubyHtmlRenderer
 import com.example.xjapanesefuriganaoverlay.japanese.JapaneseTextDetector
+import com.example.xjapanesefuriganaoverlay.util.TextHash
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 @SuppressLint("StaticFieldLeak")
@@ -55,6 +62,9 @@ object OverlayController {
     private var lastPanelY = UNSET_POSITION
     private var currentCopyHtml: String? = null
     private var currentCopyText: String? = null
+    private var panelScanGeneration = 0
+    private val inFlightAnnotationRequests =
+        mutableMapOf<String, Deferred<Result<List<FuriganaAnnotation>>>>()
 
     fun showButton(context: Context) {
         val appContext = context.applicationContext
@@ -117,6 +127,10 @@ object OverlayController {
         hidePanel()
         hideButton()
     }
+
+    fun isButtonVisible(): Boolean = buttonView != null
+
+    fun isPanelVisible(): Boolean = panelView != null
 
     private fun togglePanel(context: Context) {
         if (panelView != null) {
@@ -200,11 +214,12 @@ object OverlayController {
             )
         )
         panelContentView = root
-        renderList(appContext, root)
+        renderLoading(appContext, root, "正在识别当前屏幕...")
 
         runCatching {
             wm.addView(container, params)
             panelView = container
+            requestPanelScan(appContext, root, SystemClock.elapsedRealtime())
         }.onFailure {
             panelContentView = null
             panelParams = null
@@ -212,7 +227,98 @@ object OverlayController {
         }
     }
 
-    private fun renderList(context: Context, root: LinearLayout) {
+    private fun requestPanelScan(context: Context, root: LinearLayout, openedAt: Long) {
+        val generation = ++panelScanGeneration
+        var scanReturned = false
+        root.postDelayed(
+            {
+                if (panelContentView !== root || generation != panelScanGeneration || scanReturned) {
+                    return@postDelayed
+                }
+                val fallbackPosts = CurrentPostRepository.getPosts()
+                XFuriganaPerf.d(
+                    "panel scan timeout openToFallbackMs=${SystemClock.elapsedRealtime() - openedAt} " +
+                        "fallbackPosts=${fallbackPosts.size}"
+                )
+                renderList(
+                    context = context,
+                    root = root,
+                    posts = fallbackPosts,
+                    statusMessage = "使用最近一次识别结果"
+                )
+            },
+            PANEL_SCAN_FALLBACK_MS
+        )
+
+        val requested = XTextAccessibilityService.requestScanNow { posts, metrics ->
+            scope.launch {
+                if (panelContentView !== root || generation != panelScanGeneration) return@launch
+                scanReturned = true
+                val openToListMs = SystemClock.elapsedRealtime() - openedAt
+                XFuriganaPerf.d(
+                    "panel scan result openToListMs=$openToListMs posts=${posts.size} " +
+                        "scanMs=${metrics.totalDurationMs} rawCache=${metrics.rawHashCacheHit} " +
+                        "fallback=${metrics.usedRepositoryFallback}"
+                )
+                renderList(
+                    context = context,
+                    root = root,
+                    posts = posts,
+                    statusMessage = if (metrics.usedRepositoryFallback) {
+                        "使用最近一次识别结果"
+                    } else {
+                        null
+                    },
+                    metrics = metrics
+                )
+            }
+        }
+
+        if (!requested) {
+            scanReturned = true
+            val fallbackPosts = CurrentPostRepository.getPosts()
+            XFuriganaPerf.d(
+                "panel scan unavailable openToFallbackMs=${SystemClock.elapsedRealtime() - openedAt} " +
+                    "fallbackPosts=${fallbackPosts.size}"
+            )
+            renderList(
+                context = context,
+                root = root,
+                posts = fallbackPosts,
+                statusMessage = "无障碍服务未连接，使用最近一次识别结果"
+            )
+        }
+    }
+
+    private fun renderLoading(context: Context, root: LinearLayout, message: String) {
+        currentCopyHtml = null
+        currentCopyText = null
+        root.removeAllViews()
+        root.addView(headerRow(context, "当前屏幕日文 post") {
+            smallButton(context, "关闭").apply { setOnClickListener { hidePanel() } }
+        })
+        root.addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(ProgressBar(context))
+                addView(emptyText(context, message))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+    }
+
+    private fun renderList(
+        context: Context,
+        root: LinearLayout,
+        posts: List<DetectedPost> = CurrentPostRepository.getPosts(),
+        statusMessage: String? = null,
+        metrics: ScanMetrics? = null
+    ) {
         currentCopyHtml = null
         currentCopyText = null
         root.removeAllViews()
@@ -233,13 +339,22 @@ object OverlayController {
             )
         )
 
-        val posts = CurrentPostRepository.getPosts()
-        if (posts.isEmpty()) {
-            list.addView(emptyText(context, "当前屏幕暂无候选日文 post"))
+        statusMessage?.let { message ->
+            list.addView(emptyText(context, message))
+        }
+        val visiblePosts = posts.take(MAX_DISPLAYED_POSTS)
+        if (visiblePosts.isEmpty()) {
+            val message = buildString {
+                append("当前屏幕没有识别到含汉字和假名的日文文本\n")
+                append("请确认当前 App 包名在目标包名列表中\n")
+                append("可以尝试滚动页面后重新点击")
+                metrics?.failure?.let { append("\n").append(it) }
+            }
+            list.addView(emptyText(context, message))
         } else {
-            posts.forEach { post ->
+            visiblePosts.forEach { post ->
                 list.addView(postRow(context, post) {
-                    renderResult(context, root, post)
+                    renderResult(context, root, post, SystemClock.elapsedRealtime())
                 })
             }
         }
@@ -254,7 +369,12 @@ object OverlayController {
         )
     }
 
-    private fun renderResult(context: Context, root: LinearLayout, post: DetectedPost) {
+    private fun renderResult(
+        context: Context,
+        root: LinearLayout,
+        post: DetectedPost,
+        clickedAt: Long
+    ) {
         currentCopyHtml = null
         currentCopyText = null
         root.removeAllViews()
@@ -325,7 +445,12 @@ object OverlayController {
         val cache = FuriganaCache(context)
         val cached = cache.get(post.text, settingsRepository.model)
         if (cached != null) {
+            val renderStart = SystemClock.elapsedRealtime()
             showHtml(webView, progress, cached.rubyHtml, post.text)
+            XFuriganaPerf.d(
+                "result cache_hit clickToRenderMs=${SystemClock.elapsedRealtime() - clickedAt} " +
+                    "webViewLoadMs=${SystemClock.elapsedRealtime() - renderStart}"
+            )
             val cachedAnnotations = FuriganaAnnotationCodec.decode(cached.annotationHintsJson)
                 .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(post.text, cached.rubyHtml) }
             NoteRepository(context).saveNote(
@@ -344,7 +469,16 @@ object OverlayController {
         }
 
         scope.launch {
-            val result = FuriganaClient(context).requestAnnotations(post.text)
+            val llmStart = SystemClock.elapsedRealtime()
+            XFuriganaPerf.d("result clickToLlmStartMs=${llmStart - clickedAt} textLen=${post.text.length}")
+            val requestKey = annotationRequestKey(settingsRepository, post)
+            val deferred = annotationRequest(context, requestKey, post.text)
+            val result = deferred.await()
+            val llmDurationMs = SystemClock.elapsedRealtime() - llmStart
+            XFuriganaPerf.d(
+                "result llmDurationMs=$llmDurationMs success=${result.isSuccess} " +
+                    "error=${result.exceptionOrNull()?.message}"
+            )
             if (panelContentView !== root) return@launch
 
             result.fold(
@@ -360,7 +494,12 @@ object OverlayController {
                         modelName = settingsRepository.model,
                         annotationHintsJson = annotationHintsJson
                     )
+                    val renderStart = SystemClock.elapsedRealtime()
                     showHtml(webView, progress, html, plain)
+                    XFuriganaPerf.d(
+                        "result webViewLoadMs=${SystemClock.elapsedRealtime() - renderStart} " +
+                            "annotations=${annotations.size}"
+                    )
                     copyButton.isEnabled = true
                     wordButton.isEnabled = true
                     wordButton.setOnClickListener {
@@ -397,6 +536,40 @@ object OverlayController {
             .putExtra(AddWordActivity.EXTRA_READING_HINTS, hints.toString())
         hidePanel()
         context.applicationContext.startActivity(intent)
+    }
+
+    private fun annotationRequest(
+        context: Context,
+        requestKey: String,
+        text: String
+    ): Deferred<Result<List<FuriganaAnnotation>>> {
+        inFlightAnnotationRequests[requestKey]?.let { existing ->
+            XFuriganaPerf.d("result reuse_in_flight_request key=$requestKey")
+            return existing
+        }
+
+        val appContext = context.applicationContext
+        return scope.async {
+            FuriganaClient(appContext).requestAnnotations(text)
+        }.also { deferred ->
+            inFlightAnnotationRequests[requestKey] = deferred
+            deferred.invokeOnCompletion {
+                scope.launch {
+                    if (inFlightAnnotationRequests[requestKey] === deferred) {
+                        inFlightAnnotationRequests.remove(requestKey)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun annotationRequestKey(
+        settingsRepository: SettingsRepository,
+        post: DetectedPost
+    ): String {
+        return TextHash.sha256Short(
+            "${settingsRepository.apiBaseUrl}\n${settingsRepository.model}\n${post.text}"
+        )
     }
 
     private fun showHtml(webView: WebView, progress: View, html: String, plainText: String) {
@@ -774,4 +947,6 @@ object OverlayController {
     }
 
     private const val UNSET_POSITION = Int.MIN_VALUE
+    private const val PANEL_SCAN_FALLBACK_MS = 1500L
+    private const val MAX_DISPLAYED_POSTS = 20
 }
