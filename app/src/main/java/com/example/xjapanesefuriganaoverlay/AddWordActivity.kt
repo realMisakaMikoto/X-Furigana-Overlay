@@ -243,7 +243,7 @@ class AddWordActivity : Activity() {
         willCallLlm: Boolean,
         finalReading: String?
     ) {
-        val matchedHints = result.matchedHints.joinToString(
+        val matchedHints = result.usedHints.joinToString(
             separator = "; ",
             prefix = "[",
             postfix = "]"

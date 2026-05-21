@@ -1,5 +1,6 @@
 package com.example.xjapanesefuriganaoverlay.furigana
 
+import java.text.Normalizer
 import kotlin.math.max
 import kotlin.math.min
 
@@ -43,13 +44,20 @@ object RubyHtmlRenderer {
         val clean = cleanAnnotations(originalText, annotations)
         val builder = StringBuilder()
         var cursor = 0
-        clean.forEach { annotation ->
-            if (annotation.start < cursor) return@forEach
+        clean.forEachIndexed { index, annotation ->
+            if (annotation.start < cursor) return@forEachIndexed
+            val limitEnd = clean.getOrNull(index + 1)?.start ?: originalText.length
+            val display = displayAnnotation(
+                sourceText = originalText,
+                annotation = annotation,
+                limitEnd = limitEnd,
+            )
             builder.append(originalText.substring(cursor, annotation.start))
-            builder.append(annotation.surface)
+            builder.append(originalText.substring(annotation.start, display.rubyBaseEnd))
             builder.append('(')
-            builder.append(annotation.reading)
+            builder.append(display.rubyReading)
             builder.append(')')
+            builder.append(originalText.substring(display.rubyBaseEnd, annotation.end))
             cursor = annotation.end
         }
         builder.append(originalText.substring(cursor))
@@ -60,18 +68,122 @@ object RubyHtmlRenderer {
         val clean = cleanAnnotations(originalText, annotations)
         val builder = StringBuilder()
         var cursor = 0
-        clean.forEach { annotation ->
-            if (annotation.start < cursor) return@forEach
+        clean.forEachIndexed { index, annotation ->
+            if (annotation.start < cursor) return@forEachIndexed
+            val limitEnd = clean.getOrNull(index + 1)?.start ?: originalText.length
+            val display = displayAnnotation(
+                sourceText = originalText,
+                annotation = annotation,
+                limitEnd = limitEnd,
+            )
             builder.append(escapeHtml(originalText.substring(cursor, annotation.start)))
             builder.append("<ruby>")
-            builder.append(escapeHtml(annotation.surface))
+            builder.append(escapeHtml(originalText.substring(annotation.start, display.rubyBaseEnd)))
             builder.append("<rt>")
-            builder.append(escapeHtml(annotation.reading))
+            builder.append(escapeHtml(display.rubyReading))
             builder.append("</rt></ruby>")
+            builder.append(escapeHtml(originalText.substring(display.rubyBaseEnd, annotation.end)))
             cursor = annotation.end
         }
         builder.append(escapeHtml(originalText.substring(cursor)))
         return builder.toString()
+    }
+
+    private fun displayAnnotation(
+        sourceText: String,
+        annotation: FuriganaAnnotation,
+        limitEnd: Int
+    ): DisplayAnnotation {
+        var rubyBaseEnd = annotation.end
+        var rubyReading = annotation.reading
+
+        val trailingInside = duplicatedTrailingKanaLength(
+            sourceText = sourceText,
+            start = annotation.start,
+            end = annotation.end,
+            reading = rubyReading
+        )
+        if (trailingInside > 0) {
+            rubyBaseEnd -= trailingInside
+            rubyReading = rubyReading.dropLast(trailingInside)
+        }
+
+        val following = duplicatedFollowingKanaLength(
+            sourceText = sourceText,
+            baseEnd = annotation.end,
+            limitEnd = limitEnd,
+            reading = rubyReading
+        )
+        if (following > 0) {
+            rubyReading = rubyReading.dropLast(following)
+        }
+
+        return DisplayAnnotation(
+            rubyBaseEnd = rubyBaseEnd,
+            rubyReading = rubyReading.ifBlank { annotation.reading }
+        )
+    }
+
+    private fun duplicatedTrailingKanaLength(
+        sourceText: String,
+        start: Int,
+        end: Int,
+        reading: String
+    ): Int {
+        if (end <= start || reading.isBlank()) return 0
+
+        val kana = StringBuilder()
+        var index = end - 1
+        while (index >= start) {
+            val normalized = normalizeSingleChar(sourceText[index])
+            if (!isKanaOrLongVowel(normalized)) break
+            kana.insert(0, toHiragana(normalized))
+            index--
+        }
+        if (kana.isEmpty()) return 0
+
+        val kanaText = kana.toString()
+        val normalizedReading = katakanaToHiragana(reading)
+        for (length in kanaText.length downTo 1) {
+            if (end - length <= start) continue
+            val suffix = kanaText.substring(kanaText.length - length)
+            if (normalizedReading.endsWith(suffix)) {
+                return length
+            }
+        }
+        return 0
+    }
+
+    private fun duplicatedFollowingKanaLength(
+        sourceText: String,
+        baseEnd: Int,
+        limitEnd: Int,
+        reading: String
+    ): Int {
+        if (baseEnd >= limitEnd || baseEnd >= sourceText.length || reading.isBlank()) {
+            return 0
+        }
+
+        val safeLimit = min(limitEnd, sourceText.length)
+        val kana = StringBuilder()
+        var index = baseEnd
+        while (index < safeLimit) {
+            val normalized = normalizeSingleChar(sourceText[index])
+            if (!isKanaOrLongVowel(normalized)) break
+            kana.append(toHiragana(normalized))
+            index++
+        }
+        if (kana.isEmpty()) return 0
+
+        val kanaText = kana.toString()
+        val normalizedReading = katakanaToHiragana(reading)
+        for (length in kanaText.length downTo 1) {
+            val prefix = kanaText.substring(0, length)
+            if (normalizedReading.endsWith(prefix)) {
+                return length
+            }
+        }
+        return 0
     }
 
     private fun cleanAnnotations(
@@ -112,6 +224,36 @@ object RubyHtmlRenderer {
             (candidate.confidence == existing.confidence && candidateLength > existingLength)
     }
 
+    private fun normalizeSingleChar(char: Char): Char {
+        return Normalizer.normalize(char.toString(), Normalizer.Form.NFKC).firstOrNull() ?: char
+    }
+
+    private fun isKanaOrLongVowel(char: Char): Boolean {
+        return isHiragana(char) || isKatakana(char) || char == 'ー'
+    }
+
+    private fun isHiragana(char: Char): Boolean {
+        return char in '\u3041'..'\u3096' || char in '\u309D'..'\u309E'
+    }
+
+    private fun isKatakana(char: Char): Boolean {
+        return char in '\u30A1'..'\u30F6' || char in '\u30FD'..'\u30FE'
+    }
+
+    private fun toHiragana(char: Char): Char {
+        return if (isKatakana(char)) {
+            (char.code - KATAKANA_TO_HIRAGANA_OFFSET).toChar()
+        } else {
+            char
+        }
+    }
+
+    private fun katakanaToHiragana(value: String): String {
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+            .map { char -> toHiragana(char) }
+            .joinToString("")
+    }
+
     private fun escapeHtml(value: String): String {
         val builder = StringBuilder(value.length)
         value.forEach { char ->
@@ -126,4 +268,11 @@ object RubyHtmlRenderer {
         }
         return builder.toString()
     }
+
+    private data class DisplayAnnotation(
+        val rubyBaseEnd: Int,
+        val rubyReading: String
+    )
+
+    private const val KATAKANA_TO_HIRAGANA_OFFSET = 0x60
 }

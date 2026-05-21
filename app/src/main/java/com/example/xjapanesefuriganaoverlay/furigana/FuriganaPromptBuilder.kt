@@ -6,6 +6,7 @@ object FuriganaPromptBuilder {
             日语furigana引擎。根据原文语境，为候选片段标平假名读音；不翻译、不解释、不改写。读音只对应候选surface，不要包含候选外的文字。多音词、熟字训、地名、人名、网络语按语境判断。
             候选可能包含整词和单个汉字。单个汉字也必须按它在原文词语里的实际读音输出，例如“発売”里的“発”读“はつ”、“売”读“ばい”。日期/数量后缀必须看完整原文判断，例如“9月”的候选surface为“月”时读“がつ”，不是“げつ”；“1日”的候选surface为“日”时读“ついたち”。
             候选也可能是数字表达式，例如“2025年”“7月1日”“12時30分”。必须结合上下文输出自然日语读法。
+            对于含送り仮名的词，优先为完整词候选标注读音。如果候选中同时存在“長持ち”和“長持”，优先输出“長持ち”。避免输出“長持 -> ながもち”这类surface不含送り仮名但reading包含送り仮名读音的结果。如果只能标注纯汉字部分，则reading不要包含候选外的送り仮名读音。
             只输出紧凑JSON：{"a":[[0,"ひょうき",0.95],[1,"みち",0.9]]}
             每项为[id, reading, confidence]。id必须来自候选；reading必须全平假名。尽量为每个候选输出一项，不确定也选现代日语最自然读法。没有候选则{"a":[]}。
         """.trimIndent()
@@ -125,6 +126,11 @@ object FuriganaPromptBuilder {
             cursor++
         }
 
+        val fullWordEnd = extendMixedKanjiWord(text, cursor, end)
+        if (fullWordEnd > end) {
+            addCandidate(candidates, text, cursor, fullWordEnd)
+        }
+
         val remaining = end - cursor
         when {
             remaining <= 0 -> return
@@ -146,6 +152,45 @@ object FuriganaPromptBuilder {
         for (singleIndex in start until end) {
             addCandidate(candidates, text, singleIndex, singleIndex + 1)
         }
+    }
+
+    private fun extendMixedKanjiWord(text: String, kanjiStart: Int, kanjiEnd: Int): Int {
+        if (kanjiStart < 0 || kanjiEnd <= kanjiStart || kanjiEnd > text.length) {
+            return kanjiEnd
+        }
+
+        var cursor = kanjiEnd
+        while (cursor < text.length) {
+            val kanaStart = cursor
+            while (cursor < text.length && isHiragana(text[cursor])) {
+                cursor++
+            }
+            if (kanaStart == cursor) return cursor
+
+            if (cursor < text.length && isKanji(text[cursor])) {
+                while (cursor < text.length && isKanji(text[cursor])) {
+                    cursor++
+                }
+                continue
+            }
+
+            val okuriganaEnd = extendWithOkurigana(text, kanaStart, cursor)
+            return okuriganaEnd
+        }
+        return cursor
+    }
+
+    private fun extendWithOkurigana(text: String, kanaStart: Int, kanaEnd: Int): Int {
+        if (kanaStart >= kanaEnd) return kanaStart
+        val kanaRun = text.substring(kanaStart, kanaEnd)
+        if (kanaRun.startsWith("する") || kanaRun.startsWith("です")) return kanaStart
+
+        OKURIGANA_SUFFIXES
+            .firstOrNull { kanaRun.startsWith(it) }
+            ?.let { suffix -> return kanaStart + suffix.length }
+
+        val first = kanaRun.first()
+        return if (first in SINGLE_OKURIGANA) kanaStart + 1 else kanaStart
     }
 
     private fun addCandidate(
@@ -180,6 +225,10 @@ object FuriganaPromptBuilder {
         return char in '\u4E00'..'\u9FFF' || char in '\u3400'..'\u4DBF'
     }
 
+    private fun isHiragana(char: Char): Boolean {
+        return char in '\u3041'..'\u3096' || char in '\u309D'..'\u309E'
+    }
+
     private fun isDigitLike(char: Char): Boolean {
         return char in '0'..'9' || char in '０'..'９'
     }
@@ -194,4 +243,28 @@ object FuriganaPromptBuilder {
 
     private const val NUMERIC_SUFFIX_KANJI = "年月日時分秒円歳才人個枚本回話巻号度"
     private const val MAX_NUMERIC_UNITS = 4
+    private const val SINGLE_OKURIGANA = "ちりみきぎしむびにいたてでぐげす"
+    private val OKURIGANA_SUFFIXES = listOf(
+        "させる",
+        "られる",
+        "れる",
+        "せる",
+        "ない",
+        "べる",
+        "める",
+        "ける",
+        "げる",
+        "える",
+        "える",
+        "いる",
+        "ある",
+        "する",
+        "した",
+        "して",
+        "ます",
+        "た",
+        "て",
+        "る",
+        "す"
+    )
 }

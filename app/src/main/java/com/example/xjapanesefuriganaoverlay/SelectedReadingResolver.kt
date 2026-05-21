@@ -17,9 +17,12 @@ data class ResolveResult(
     val reading: String?,
     val hitType: String,
     val shouldUseLlm: Boolean,
-    val matchedHints: List<ReadingHint> = emptyList(),
+    val usedHints: List<ReadingHint> = emptyList(),
     val reason: String = ""
-)
+) {
+    val matchedHints: List<ReadingHint>
+        get() = usedHints
+}
 
 class SelectedReadingResolver(
     private val sourceText: String,
@@ -62,7 +65,7 @@ class SelectedReadingResolver(
             reading = hint.reading,
             hitType = "exact_range",
             shouldUseLlm = false,
-            matchedHints = listOf(hint)
+            usedHints = listOf(hint)
         )
     }
 
@@ -79,7 +82,14 @@ class SelectedReadingResolver(
             if (hint != null) {
                 builder.append(hint.reading)
                 matched.add(hint)
-                cursor = hint.end
+                val nextCursor = skipDuplicatedOkuriganaAfterHint(
+                    sourceText = sourceText,
+                    cursor = hint.end,
+                    selectionEnd = end,
+                    reading = hint.reading
+                )
+                if (nextCursor > hint.end) skippedOrLiteralGap = true
+                cursor = nextCursor
                 continue
             }
 
@@ -124,7 +134,7 @@ class SelectedReadingResolver(
                         reading = builder.toString().takeIf { it.isNotBlank() },
                         hitType = if (covering.isNotEmpty()) "inside_hint_needs_llm" else "uncovered_kanji",
                         shouldUseLlm = true,
-                        matchedHints = matched,
+                        usedHints = matched,
                         reason = reason
                     )
                 }
@@ -134,7 +144,7 @@ class SelectedReadingResolver(
                         reading = builder.toString().takeIf { it.isNotBlank() },
                         hitType = "unresolved_number",
                         shouldUseLlm = true,
-                        matchedHints = matched,
+                        usedHints = matched,
                         reason = "Number expression could not be resolved locally."
                     )
                 }
@@ -152,14 +162,14 @@ class SelectedReadingResolver(
                 reading = null,
                 hitType = "empty_local_reading",
                 shouldUseLlm = true,
-                matchedHints = matched
+                usedHints = matched
             )
         }
 
         val hitType = when {
             matched.isNotEmpty() && skippedOrLiteralGap -> "composed_hints_with_gaps"
             matched.isNotEmpty() -> "composed_hints"
-            usedNumberRule -> "local_number"
+            usedNumberRule -> "local_number_rule"
             appendedLiteral -> "literal_kana"
             else -> "local_literal"
         }
@@ -167,7 +177,7 @@ class SelectedReadingResolver(
             reading = reading,
             hitType = hitType,
             shouldUseLlm = false,
-            matchedHints = matched
+            usedHints = matched
         )
     }
 
@@ -222,7 +232,7 @@ class SelectedReadingResolver(
             ?: return null
         return ResolveResult(
             reading = reading,
-            hitType = "local_number",
+            hitType = "local_number_rule",
             shouldUseLlm = false
         )
     }
@@ -238,8 +248,39 @@ class SelectedReadingResolver(
             reading = reading,
             hitType = "unique_surface",
             shouldUseLlm = false,
-            matchedHints = matching
+            usedHints = matching
         )
+    }
+
+    private fun skipDuplicatedOkuriganaAfterHint(
+        sourceText: String,
+        cursor: Int,
+        selectionEnd: Int,
+        reading: String
+    ): Int {
+        if (cursor >= selectionEnd) return cursor
+
+        val kana = StringBuilder()
+        var index = cursor
+        while (index < selectionEnd) {
+            val normalized = normalizeSingleChar(sourceText[index])
+            if (!isKanaOrLongVowel(normalized)) break
+            kana.append(toHiragana(normalized))
+            index++
+        }
+        if (kana.isEmpty()) return cursor
+
+        val kanaText = kana.toString()
+        val normalizedReading = katakanaToHiragana(reading)
+        var skipLength = 0
+        for (length in kanaText.length downTo 1) {
+            val prefix = kanaText.substring(0, length)
+            if (normalizedReading.endsWith(prefix)) {
+                skipLength = length
+                break
+            }
+        }
+        return cursor + skipLength
     }
 
     private fun normalizeSingleChar(char: Char): Char {
@@ -247,6 +288,8 @@ class SelectedReadingResolver(
     }
 
     private fun isKana(char: Char): Boolean = isHiragana(char) || isKatakana(char)
+
+    private fun isKanaOrLongVowel(char: Char): Boolean = isKana(char) || char == 'ー'
 
     private fun isHiragana(char: Char): Boolean {
         return char in '\u3041'..'\u3096' || char in '\u309D'..'\u309E'
@@ -258,6 +301,19 @@ class SelectedReadingResolver(
 
     private fun kanaToHiragana(char: Char): Char {
         return if (isKatakana(char)) (char.code - KATAKANA_TO_HIRAGANA_OFFSET).toChar() else char
+    }
+
+    private fun toHiragana(char: Char): Char {
+        return when {
+            isKatakana(char) -> (char.code - KATAKANA_TO_HIRAGANA_OFFSET).toChar()
+            else -> char
+        }
+    }
+
+    private fun katakanaToHiragana(value: String): String {
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+            .map { char -> toHiragana(char) }
+            .joinToString("")
     }
 
     private fun isKanjiLike(char: Char): Boolean {
