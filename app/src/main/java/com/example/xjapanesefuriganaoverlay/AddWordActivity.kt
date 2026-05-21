@@ -3,6 +3,7 @@ package com.example.xjapanesefuriganaoverlay
 import android.app.Activity
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -156,7 +157,33 @@ class AddWordActivity : Activity() {
 
     private fun requestSelectedReading(selected: String, start: Int, end: Int) {
         val requestId = ++readingRequestId
-        val fallbackReading = inferReading(selected, start, end)
+        val resolveResult = SelectedReadingResolver(source, readingHints).resolve(start, end)
+        if (!resolveResult.shouldUseLlm && !resolveResult.reading.isNullOrBlank()) {
+            readingLoading = false
+            readingInput.isEnabled = true
+            readingInput.setText(resolveResult.reading)
+            logResolveResult(
+                selected = selected,
+                start = start,
+                end = end,
+                result = resolveResult,
+                willCallLlm = false,
+                finalReading = resolveResult.reading
+            )
+            Toast.makeText(this, "已使用本地注音索引：${resolveResult.hitType}", Toast.LENGTH_SHORT).show()
+            focusReadingInput()
+            return
+        }
+
+        logResolveResult(
+            selected = selected,
+            start = start,
+            end = end,
+            result = resolveResult,
+            willCallLlm = true,
+            finalReading = resolveResult.reading
+        )
+
         readingLoading = true
         readingInput.isEnabled = false
         readingInput.setText("识别中...")
@@ -172,30 +199,64 @@ class AddWordActivity : Activity() {
             result.fold(
                 onSuccess = { reading ->
                     readingInput.setText(reading)
+                    Log.d(
+                        TAG,
+                        "selection LLM success finalReading=$reading hitType=${resolveResult.hitType}"
+                    )
                     Toast.makeText(this@AddWordActivity, "已由模型识别读音，可手动修改", Toast.LENGTH_SHORT).show()
                 },
                 onFailure = { throwable ->
-                    if (fallbackReading.isNotBlank()) {
-                        readingInput.setText(fallbackReading)
-                        Toast.makeText(
-                            this@AddWordActivity,
-                            "模型识别失败，已使用本地兜底：${throwable.message ?: throwable.javaClass.simpleName}",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        readingInput.setText("")
-                        Toast.makeText(
-                            this@AddWordActivity,
-                            "模型识别失败，请手动填写：${throwable.message ?: throwable.javaClass.simpleName}",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                    val fallbackReading = resolveResult.reading
+                        ?.takeIf { it.isNotBlank() }
+                        ?: inferReading(selected, start, end).takeIf { it.isNotBlank() }
+                    Log.d(
+                        TAG,
+                        "selection LLM failed hitType=${resolveResult.hitType} fallback=$fallbackReading error=${throwable.message ?: throwable.javaClass.simpleName}"
+                    )
+                    readingInput.setText(fallbackReading.orEmpty())
+                    Toast.makeText(
+                        this@AddWordActivity,
+                        if (fallbackReading.isNullOrBlank()) {
+                            "模型识别失败，请手动填写：${throwable.message ?: throwable.javaClass.simpleName}"
+                        } else {
+                            "模型识别失败，已使用本地兜底：${throwable.message ?: throwable.javaClass.simpleName}"
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             )
-            readingInput.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(readingInput, InputMethodManager.SHOW_IMPLICIT)
+            focusReadingInput()
         }
+    }
+
+    private fun focusReadingInput() {
+        readingInput.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(readingInput, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun logResolveResult(
+        selected: String,
+        start: Int,
+        end: Int,
+        result: ResolveResult,
+        willCallLlm: Boolean,
+        finalReading: String?
+    ) {
+        val matchedHints = result.matchedHints.joinToString(
+            separator = "; ",
+            prefix = "[",
+            postfix = "]"
+        ) { hint ->
+            "${hint.start}-${hint.end}:${hint.surface}/${hint.reading}"
+        }
+        Log.d(
+            TAG,
+            "selection sourceLength=${source.length}, start=$start, end=$end, selected=$selected, " +
+                "hintsCount=${readingHints.size}, matchedHints=$matchedHints, " +
+                "hitType=${result.hitType}, finalReading=${finalReading.orEmpty()}, " +
+                "shouldUseLlm=${result.shouldUseLlm}, willCallLlm=$willCallLlm, reason=${result.reason}"
+        )
     }
 
     private fun saveWord() {
@@ -751,6 +812,7 @@ class AddWordActivity : Activity() {
     companion object {
         const val EXTRA_SOURCE_TEXT = "source_text"
         const val EXTRA_READING_HINTS = "reading_hints"
+        private const val TAG = "AddWordActivity"
         private const val KATAKANA_TO_HIRAGANA_OFFSET = 0x60
         private const val SKIPPABLE_READING_CHARS =
             "、。，．・･!！?？「」『』（）()[]【】<>《》〈〉…‥〜～-—―/／\\|｜:：;；,.\"'“”‘’"
@@ -778,16 +840,6 @@ class AddWordActivity : Activity() {
             '気' to listOf("け", "き"),
             '道' to listOf("みち", "どう")
         )
-    }
-
-    private data class ReadingHint(
-        val surface: String,
-        val reading: String,
-        val start: Int,
-        val end: Int,
-        val confidence: Double
-    ) {
-        fun hasValidRange(): Boolean = start >= 0 && end > start
     }
 
     private data class ReadingToken(
