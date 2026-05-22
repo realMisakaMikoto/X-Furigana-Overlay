@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.XJapaneseFuriganaOverlay" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@drawable/bg_app_gradient</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/haruhi_paper</item>
+        <item name="android:navigationBarColor">@color/haruhi_paper</item>
+        <item name="android:colorAccent">@color/haruhi_uniform_blue_deep</item>
+    </style>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SOS Furigana 団</string>
+    <string name="app_mark">ふ</string>
+    <string name="accessibility_service_description">读取目标 App 当前屏幕文本，用于本地筛选日文 post，并在用户主动点击后生成 furigana。</string>
+</resources>

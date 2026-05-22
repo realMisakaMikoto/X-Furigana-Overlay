@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="haruhi_hair">#4B2D22</color>
+    <color name="haruhi_hair_deep">#241611</color>
+    <color name="haruhi_hair_soft">#7A5140</color>
+    <color name="haruhi_headband">#FFD44D</color>
+    <color name="haruhi_headband_deep">#E59B2D</color>
+    <color name="haruhi_uniform_blue">#A9DBEA</color>
+    <color name="haruhi_uniform_blue_deep">#4CAACD</color>
+    <color name="haruhi_paper">#F8FBFC</color>
+    <color name="haruhi_surface">#FFFFFF</color>
+    <color name="haruhi_surface_tint">#EEF8FB</color>
+    <color name="haruhi_ink">#1C1816</color>
+    <color name="haruhi_muted">#75665F</color>
+    <color name="haruhi_danger">#D84A36</color>
+</resources>

@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+*/build/
+
+# Local config
+local.properties
+.env
+*.env
+apikey.properties
+keystore.properties
+
+# Android Studio
+.idea/
+*.iml
+.DS_Store
+
+# Signing keys
+*.jks
+*.keystore
+
+# Logs
+*.log
+
+# Generated
+captures/
+.externalNativeBuild/
+.cxx/
