@@ -63,6 +63,8 @@ object OverlayController {
     private var lastPanelHeight = 0
     private var lastPanelX = UNSET_POSITION
     private var lastPanelY = UNSET_POSITION
+    private var lastButtonX = UNSET_POSITION
+    private var lastButtonY = UNSET_POSITION
     private var currentCopyHtml: String? = null
     private var currentCopyText: String? = null
     private var panelScanGeneration = 0
@@ -90,21 +92,36 @@ object OverlayController {
             elevation = dp(appContext, 10).toFloat()
         }
 
+        val buttonSize = dp(appContext, 56)
+        val metrics = appContext.resources.displayMetrics
         val params = WindowManager.LayoutParams(
-            dp(appContext, 56),
-            dp(appContext, 56),
+            buttonSize,
+            buttonSize,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dp(appContext, 16)
-            y = dp(appContext, 120)
+            x = if (lastButtonX != UNSET_POSITION) {
+                clamp(lastButtonX, 0, metrics.widthPixels - buttonSize)
+            } else {
+                dp(appContext, 16)
+            }
+            y = if (lastButtonY != UNSET_POSITION) {
+                clamp(lastButtonY, 0, metrics.heightPixels - buttonSize)
+            } else {
+                dp(appContext, 120)
+            }
         }
 
         button.setOnClickListener { togglePanel(appContext) }
-        button.setOnTouchListener(DraggableTouchListener(wm, params))
+        button.setOnTouchListener(
+            DraggableTouchListener(wm, params) { x, y ->
+                lastButtonX = x
+                lastButtonY = y
+            }
+        )
 
         runCatching {
             wm.addView(button, params)
@@ -815,7 +832,8 @@ object OverlayController {
 
     private class DraggableTouchListener(
         private val windowManager: WindowManager,
-        private val params: WindowManager.LayoutParams
+        private val params: WindowManager.LayoutParams,
+        private val onPositionChanged: (Int, Int) -> Unit
     ) : View.OnTouchListener {
         private var downRawX = 0f
         private var downRawY = 0f
@@ -846,14 +864,23 @@ object OverlayController {
                         return true
                     }
                     moved = true
-                    params.x = startX + dx
-                    params.y = startY + dy
-                    runCatching { windowManager.updateViewLayout(view, params) }
+                    val metrics = view.context.resources.displayMetrics
+                    val maxX = metrics.widthPixels - params.width
+                    val maxY = metrics.heightPixels - params.height
+                    val nextX = clamp(startX + dx, 0, maxX)
+                    val nextY = clamp(startY + dy, 0, maxY)
+                    if (nextX != params.x || nextY != params.y) {
+                        params.x = nextX
+                        params.y = nextY
+                        onPositionChanged(params.x, params.y)
+                        runCatching { windowManager.updateViewLayout(view, params) }
+                    }
                     return true
                 }
 
                 MotionEvent.ACTION_UP -> {
                     if (!moved) view.performClick()
+                    onPositionChanged(params.x, params.y)
                     return true
                 }
 

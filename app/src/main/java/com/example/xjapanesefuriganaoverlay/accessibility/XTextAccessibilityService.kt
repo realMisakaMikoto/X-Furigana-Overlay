@@ -58,9 +58,13 @@ class XTextAccessibilityService : AccessibilityService() {
         if (!isSupportedEvent(eventType)) return
 
         if (!settingsRepository.isTargetPackage(packageName)) {
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                shouldClearForNonTargetPackage(packageName)
+            ) {
                 XFuriganaPerf.d("event non-target state package=$packageName clear=true")
                 clearStateAndOverlay()
+            } else {
+                XFuriganaPerf.d("event non-target transient package=$packageName clear=false")
             }
             return
         }
@@ -366,6 +370,13 @@ class XTextAccessibilityService : AccessibilityService() {
 
     private fun packageNameOfThisApp(): String = applicationContext.packageName
 
+    private fun shouldClearForNonTargetPackage(packageName: String?): Boolean {
+        if (packageName.isNullOrBlank()) return false
+        if (packageName == packageNameOfThisApp()) return false
+        if (packageName in TRANSIENT_WINDOW_PACKAGES) return false
+        return true
+    }
+
     private data class ScanResult(
         val posts: List<DetectedPost>,
         val metrics: ScanMetrics
@@ -379,6 +390,15 @@ class XTextAccessibilityService : AccessibilityService() {
         private const val MAX_NODES_PER_WINDOW = 450
         private const val MAX_TEXT_LENGTH = 500
         private const val MAX_CANDIDATE_POSTS = 20
+        private val TRANSIENT_WINDOW_PACKAGES = setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.apps.inputmethod.zhuyin",
+            "com.samsung.android.honeyboard",
+            "com.sohu.inputmethod.sogou",
+            "com.baidu.input"
+        )
 
         fun requestScanNow(callback: (List<DetectedPost>, ScanMetrics) -> Unit): Boolean {
             val service = currentService?.get() ?: return false

@@ -3,12 +3,10 @@ package com.example.xjapanesefuriganaoverlay.furigana
 object FuriganaPromptBuilder {
     fun systemPrompt(): String {
         return """
-            日语furigana引擎。根据原文语境，为候选片段标平假名读音；不翻译、不解释、不改写。读音只对应候选surface，不要包含候选外的文字。多音词、熟字训、地名、人名、网络语按语境判断。
-            候选可能包含整词和单个汉字。单个汉字也必须按它在原文词语里的实际读音输出，例如“発売”里的“発”读“はつ”、“売”读“ばい”。日期/数量后缀必须看完整原文判断，例如“9月”的候选surface为“月”时读“がつ”，不是“げつ”；“1日”的候选surface为“日”时读“ついたち”。
-            候选也可能是数字表达式，例如“2025年”“7月1日”“12時30分”。必须结合上下文输出自然日语读法。
-            对于含送り仮名的词，优先为完整词候选标注读音。如果候选中同时存在“長持ち”和“長持”，优先输出“長持ち”。避免输出“長持 -> ながもち”这类surface不含送り仮名但reading包含送り仮名读音的结果。如果只能标注纯汉字部分，则reading不要包含候选外的送り仮名读音。
+            日语furigana引擎。按原文语境为候选surface输出平假名reading；不翻译、不解释、不改写。
+            规则：reading只对应surface；多音词、熟字训、地名、人名、网络语按上下文取最自然读法；含送り仮名的候选按完整词读，surface外的假名不要写进reading。
             只输出紧凑JSON：{"a":[[0,"ひょうき",0.95],[1,"みち",0.9]]}
-            每项为[id, reading, confidence]。id必须来自候选；reading必须全平假名。尽量为每个候选输出一项，不确定也选现代日语最自然读法。没有候选则{"a":[]}。
+            每项为[id,reading,confidence]，id必须来自候选，reading必须全平假名。尽量覆盖全部候选；没有候选则{"a":[]}。
         """.trimIndent()
     }
 
@@ -132,6 +130,9 @@ object FuriganaPromptBuilder {
         }
 
         val remaining = end - cursor
+        if (remaining in 4..MAX_FULL_KANJI_RUN_CANDIDATE_LENGTH) {
+            addCandidate(candidates, text, cursor, end)
+        }
         when {
             remaining <= 0 -> return
             remaining <= 3 -> addCandidate(candidates, text, cursor, end)
@@ -243,6 +244,7 @@ object FuriganaPromptBuilder {
 
     private const val NUMERIC_SUFFIX_KANJI = "年月日時分秒円歳才人個枚本回話巻号度"
     private const val MAX_NUMERIC_UNITS = 4
+    private const val MAX_FULL_KANJI_RUN_CANDIDATE_LENGTH = 8
     private const val SINGLE_OKURIGANA = "ちりみきぎしむびにいたてでぐげす"
     private val OKURIGANA_SUFFIXES = listOf(
         "させる",
