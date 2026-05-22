@@ -261,4 +261,3 @@ app/src/main/java/com/example/xjapanesefuriganaoverlay/
 MIT License。
 
 既然已经这么自由了，就给我拿去做点能让世界更热闹的东西。否则，罚金。
->>>>>>> 07ed606 (大更新了UI界面，使其更符合团长的风格（才不是我被迫做的）)
