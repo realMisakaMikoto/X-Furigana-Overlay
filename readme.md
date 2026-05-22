@@ -258,9 +258,6 @@ app/src/main/java/com/example/xjapanesefuriganaoverlay/
 
 ## License
 
-<<<<<<< HEAD
-使用MIT开源协议，既然都那么自由了，如果不搞出点能让世界热闹起来的东西的话，要给罚金！
-=======
 MIT License。
 
 既然已经这么自由了，就给我拿去做点能让世界更热闹的东西。否则，罚金。
