@@ -7,7 +7,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.example.xjapanesefuriganaoverlay"
+    namespace = "com.sosdanfurigana"
 
     compileSdk {
         version = release(36) {
@@ -16,11 +16,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.xjapanesefuriganaoverlay"
+        applicationId = "com.sosdanfurigana"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "1.0.4"
     }
 
     buildTypes {
