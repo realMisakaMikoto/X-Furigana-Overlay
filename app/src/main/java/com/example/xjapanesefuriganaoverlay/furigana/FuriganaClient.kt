@@ -64,20 +64,29 @@ class FuriganaClient(context: Context) {
                 if (candidates.isEmpty()) return@runCatching localAnnotations
 
                 val endpoint = resolveChatCompletionsEndpoint(baseUrl)
-                val llmAnnotations = requestAnnotationsWithStrategy(
+                val llmAnnotations = requestAnnotationsStrictlyByCandidate(
                     endpoint,
                     apiKey,
                     model,
                     originalText,
                     candidates
                 )
-                lexiconRepository.observeAnnotations(llmAnnotations)
-                resolveOverlaps(localAnnotations + llmAnnotations)
+                val repairAnnotations = requestMissingCoverageAnnotations(
+                    endpoint = endpoint,
+                    apiKey = apiKey,
+                    model = model,
+                    originalText = originalText,
+                    rawCandidates = rawCandidates,
+                    currentAnnotations = resolveOverlaps(localAnnotations + llmAnnotations)
+                )
+                val learnedAnnotations = resolveOverlaps(llmAnnotations + repairAnnotations)
+                lexiconRepository.observeAnnotations(learnedAnnotations)
+                resolveOverlaps(localAnnotations + learnedAnnotations)
                     .also { annotations ->
                     XFuriganaPerf.d(
                         "llm annotations totalMs=${SystemClock.elapsedRealtime() - startedAt} " +
                             "annotations=${annotations.size} local=${localAnnotations.size} " +
-                            "llm=${llmAnnotations.size}"
+                            "llm=${llmAnnotations.size} repair=${repairAnnotations.size} strategy=strict_candidate"
                     )
                 }
             }
@@ -195,6 +204,80 @@ class FuriganaClient(context: Context) {
             originalText = originalText,
             candidates = candidates
         )
+    }
+
+    private suspend fun requestAnnotationsStrictlyByCandidate(
+        endpoint: String,
+        apiKey: String,
+        model: String,
+        originalText: String,
+        candidates: List<FuriganaCandidate>
+    ): List<FuriganaAnnotation> = coroutineScope {
+        if (candidates.isEmpty()) return@coroutineScope emptyList()
+
+        val startedAt = SystemClock.elapsedRealtime()
+        XFuriganaPerf.d(
+            "llm annotations strict start candidates=${candidates.size} " +
+                "parallel=$MAX_PARALLEL_STRICT_CANDIDATE_REQUESTS"
+        )
+
+        val allResults = mutableListOf<Result<List<FuriganaAnnotation>>>()
+        for ((waveIndex, waveCandidates) in candidates.chunked(MAX_PARALLEL_STRICT_CANDIDATE_REQUESTS).withIndex()) {
+            val waveStartedAt = SystemClock.elapsedRealtime()
+            val waveResults = waveCandidates.map { candidate ->
+                async(Dispatchers.IO) {
+                    val candidateStartedAt = SystemClock.elapsedRealtime()
+                    runCatching {
+                        requestWithFallbacksSuspend(
+                            endpoint = endpoint,
+                            apiKey = apiKey,
+                            model = model,
+                            originalText = originalText,
+                            candidates = listOf(candidate),
+                            httpClient = STRICT_CANDIDATE_HTTP_CLIENT
+                        ).filterStrictCandidateResult(candidate)
+                    }.onSuccess { annotations ->
+                        XFuriganaPerf.d(
+                            "llm annotations strict candidate=${candidate.id} " +
+                                "surface=${candidate.surface} success=true annotations=${annotations.size} " +
+                                "ms=${SystemClock.elapsedRealtime() - candidateStartedAt}"
+                        )
+                    }.onFailure { throwable ->
+                        XFuriganaPerf.d(
+                            "llm annotations strict candidate=${candidate.id} " +
+                                "surface=${candidate.surface} success=false " +
+                                "ms=${SystemClock.elapsedRealtime() - candidateStartedAt} " +
+                                "error=${throwable.message}"
+                        )
+                    }
+                }
+            }.awaitAll()
+            allResults.addAll(waveResults)
+            XFuriganaPerf.d(
+                "llm annotations strict wave=$waveIndex candidates=${waveCandidates.size} " +
+                    "success=${waveResults.count { it.isSuccess }} " +
+                    "failure=${waveResults.count { it.isFailure }} " +
+                    "waveMs=${SystemClock.elapsedRealtime() - waveStartedAt}"
+            )
+        }
+
+        val annotations = allResults.flatMap { it.getOrElse { emptyList() } }
+        val failures = allResults.count { it.isFailure }
+        XFuriganaPerf.d(
+            "llm annotations strict complete annotations=${annotations.size} " +
+                "failures=$failures elapsedMs=${SystemClock.elapsedRealtime() - startedAt}"
+        )
+        resolveOverlaps(annotations)
+    }
+
+    private fun List<FuriganaAnnotation>.filterStrictCandidateResult(
+        candidate: FuriganaCandidate
+    ): List<FuriganaAnnotation> {
+        return filter { annotation ->
+            annotation.start == candidate.start &&
+                annotation.end == candidate.end &&
+                annotation.surface == candidate.surface
+        }.take(1)
     }
 
     private suspend fun requestAnnotationsWithoutSegmentation(
@@ -636,8 +719,9 @@ class FuriganaClient(context: Context) {
         originalText: String,
         candidates: List<FuriganaCandidate>
     ): List<FuriganaAnnotation> {
-        val numericAnnotations = candidates.mapNotNull { candidate ->
-            val reading = JapaneseNumberReading.readNumericExpression(candidate.surface)
+        val deterministicAnnotations = candidates.mapNotNull { candidate ->
+            val reading = SPECIAL_SURFACE_READINGS[candidate.surface]
+                ?: JapaneseNumberReading.readNumericExpression(candidate.surface)
                 ?: return@mapNotNull null
             if (candidate.start < 0 || candidate.end > originalText.length) {
                 return@mapNotNull null
@@ -658,7 +742,7 @@ class FuriganaClient(context: Context) {
         )
 
         val selected = mutableListOf<FuriganaAnnotation>()
-        numericAnnotations.forEach { annotation ->
+        deterministicAnnotations.forEach { annotation ->
             if (selected.none { rangesOverlap(annotation.start, annotation.end, it.start, it.end) }) {
                 selected.add(annotation)
             }
@@ -727,6 +811,85 @@ class FuriganaClient(context: Context) {
             candidates = eligibleCandidates,
             alreadyCoveredRanges = locallyCoveredRanges
         )
+    }
+
+    private suspend fun requestMissingCoverageAnnotations(
+        endpoint: String,
+        apiKey: String,
+        model: String,
+        originalText: String,
+        rawCandidates: List<FuriganaCandidate>,
+        currentAnnotations: List<FuriganaAnnotation>
+    ): List<FuriganaAnnotation> {
+        val repairCandidates = missingCoverageCandidates(
+            originalText = originalText,
+            rawCandidates = rawCandidates,
+            currentAnnotations = currentAnnotations
+        )
+        if (repairCandidates.isEmpty()) return emptyList()
+
+        XFuriganaPerf.d(
+            "llm annotations repair start missingCandidates=${repairCandidates.size} " +
+                "surfaces=${repairCandidates.joinToString("|") { it.surface }.take(160)}"
+        )
+        val startedAt = SystemClock.elapsedRealtime()
+        return runCatching {
+            requestAnnotationsStrictlyByCandidate(
+                endpoint = endpoint,
+                apiKey = apiKey,
+                model = model,
+                originalText = originalText,
+                candidates = repairCandidates
+            )
+        }.onSuccess { annotations ->
+            XFuriganaPerf.d(
+                "llm annotations repair success annotations=${annotations.size} " +
+                    "ms=${SystemClock.elapsedRealtime() - startedAt}"
+            )
+        }.onFailure { throwable ->
+            XFuriganaPerf.d(
+                "llm annotations repair failed candidates=${repairCandidates.size} " +
+                    "ms=${SystemClock.elapsedRealtime() - startedAt} error=${throwable.message}"
+            )
+        }.getOrDefault(emptyList())
+    }
+
+    private fun missingCoverageCandidates(
+        originalText: String,
+        rawCandidates: List<FuriganaCandidate>,
+        currentAnnotations: List<FuriganaAnnotation>
+    ): List<FuriganaCandidate> {
+        val coveredRanges = currentAnnotations.map { TextRange(it.start, it.end) }
+        val candidatesByStart = rawCandidates
+            .filter { candidate ->
+                containsAnnotatableChar(candidate.surface) &&
+                    !hasHardSeparator(candidate.surface) &&
+                    coveredRanges.none { rangesOverlap(candidate.start, candidate.end, it.start, it.end) }
+            }
+            .groupBy { it.start }
+
+        val selected = mutableListOf<FuriganaCandidate>()
+        var cursor = 0
+        while (cursor < originalText.length) {
+            if (isCoveredByRange(cursor, coveredRanges) || !isAnnotatableChar(originalText[cursor])) {
+                cursor++
+                continue
+            }
+
+            val candidate = chooseCompactCandidate(candidatesByStart[cursor].orEmpty())
+            if (candidate == null) {
+                cursor++
+                continue
+            }
+            selected.add(candidate)
+            cursor = maxOf(cursor + 1, candidate.end)
+        }
+
+        return selected
+            .distinctBy { it.start to it.end }
+            .sortedWith(compareByDescending<FuriganaCandidate> { candidatePriority(it) }.thenBy { it.start })
+            .take(REPAIR_REQUEST_CANDIDATE_LIMIT)
+            .sortedBy { it.start }
     }
 
     private fun candidateSegmentsForParallelRequests(
@@ -1279,7 +1442,13 @@ class FuriganaClient(context: Context) {
         private const val SAFE_SPLIT_SEARCH_RADIUS = 10
         private const val MAX_SEGMENTED_REQUESTS = 3
         private const val MAX_PARALLEL_SEGMENT_REQUESTS = 3
+        private const val REPAIR_REQUEST_CANDIDATE_LIMIT = 12
+        private const val MAX_PARALLEL_STRICT_CANDIDATE_REQUESTS = 4
         private const val LEXICON_HIT_CONFIDENCE = 0.99
+        private val SPECIAL_SURFACE_READINGS = mapOf(
+            "月見里" to "やまなし",
+            "小鳥遊" to "たかなし"
+        )
         private val HARD_SEGMENT_DELIMITERS = setOf('。', '！', '？', '!', '?', '\n', '\r')
         private val SOFT_SEGMENT_DELIMITERS = setOf('、', '，', ',', '；', ';')
         private val SAFE_SPLIT_AFTER_KANA = setOf(
@@ -1305,6 +1474,11 @@ class FuriganaClient(context: Context) {
             .writeTimeout(20, TimeUnit.SECONDS)
             .build()
         private val SEGMENT_HTTP_CLIENT = OkHttpClient.Builder()
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(BATCH_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
+            .build()
+        private val STRICT_CANDIDATE_HTTP_CLIENT = OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(BATCH_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)

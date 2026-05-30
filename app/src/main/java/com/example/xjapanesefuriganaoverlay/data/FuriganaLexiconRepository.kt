@@ -16,6 +16,8 @@ class FuriganaLexiconRepository(context: Context) {
         if (entry.readings.size != 1) return null
         val reading = entry.readings.keys.firstOrNull() ?: return null
         if (!isValidReading(reading)) return null
+        val observedReadingCount = entry.readings.getValue(reading)
+        if (observedReadingCount < MIN_OBSERVATIONS_TO_USE) return null
 
         writeEntry(
             entry.copy(
@@ -26,7 +28,7 @@ class FuriganaLexiconRepository(context: Context) {
         return LexiconHit(
             surface = normalizedSurface,
             reading = reading,
-            observedCount = entry.readings.getValue(reading),
+            observedCount = observedReadingCount,
             hitCount = entry.hitCount + 1
         )
     }
@@ -150,8 +152,10 @@ class FuriganaLexiconRepository(context: Context) {
         if (surface.length < MIN_SURFACE_LENGTH || surface.length > MAX_SURFACE_LENGTH) return false
         if (!surface.any { isKanji(it) }) return false
         if (surface.any { isDigitLike(it) }) return false
+        if (surface.any { it in KANJI_NUMERAL_CHARS }) return false
         if (surface.any { hasHardSeparator(it) }) return false
         if (surface.any { it in PARTICLE_HIRAGANA }) return false
+        if (surface in CONTEXT_SENSITIVE_SURFACES) return false
         return true
     }
 
@@ -199,11 +203,23 @@ class FuriganaLexiconRepository(context: Context) {
     companion object {
         private const val PREFS_NAME = "x_japanese_furigana_lexicon"
         private const val ENTRY_PREFIX = "entry_"
-        private const val CACHE_VERSION = "lexicon_v1"
+        private const val CACHE_VERSION = "lexicon_v2_context_safe"
         private const val MIN_CONFIDENCE_TO_CACHE = 0.85
+        private const val MIN_OBSERVATIONS_TO_USE = 2
         private const val MIN_SURFACE_LENGTH = 2
         private const val MAX_SURFACE_LENGTH = 16
         private const val MAX_ENTRIES = 3000
         private const val PARTICLE_HIRAGANA = "はがをにへでともやの"
+        private const val KANJI_NUMERAL_CHARS = "零〇一二三四五六七八九十百千万億兆"
+        private val CONTEXT_SENSITIVE_SURFACES = setOf(
+            "人気",
+            "上手",
+            "下手",
+            "今日",
+            "明日",
+            "昨日",
+            "一日",
+            "大人気"
+        )
     }
 }

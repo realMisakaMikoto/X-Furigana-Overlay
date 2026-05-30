@@ -28,8 +28,12 @@ object FuriganaJsonParser {
             if (!isAnnotatableSurface(candidate.surface)) continue
             val reading = contextAdjustedReading(originalText, candidate, parsed.reading)
             if (!isValidReading(reading)) continue
+            if (!isReadingPlausibleForSurface(candidate.surface, reading)) continue
             if (candidate.start < 0 || candidate.end > originalText.length) continue
             if (originalText.substring(candidate.start, candidate.end) != candidate.surface) continue
+            if (!isReadingContextPlausible(originalText, candidate.surface, candidate.start, candidate.end, reading)) {
+                continue
+            }
 
             annotations.add(
                 FuriganaAnnotation(
@@ -145,9 +149,12 @@ object FuriganaJsonParser {
         val end = optInt(item, "end", "e", -1)
         if (start < 0 || end <= start || end > originalText.length) return null
         if (originalText.substring(start, end) != surface) return null
+        val adjustedReading = contextAdjustedReading(originalText, surface, start, reading)
+        if (!isReadingPlausibleForSurface(surface, adjustedReading)) return null
+        if (!isReadingContextPlausible(originalText, surface, start, end, adjustedReading)) return null
         return FuriganaAnnotation(
             surface = surface,
-            reading = contextAdjustedReading(originalText, surface, start, reading),
+            reading = adjustedReading,
             start = start,
             end = end,
             confidence = confidence
@@ -168,9 +175,12 @@ object FuriganaJsonParser {
             val end = start + surface.length
             val overlaps = existing.any { rangesOverlap(start, end, it.start, it.end) }
             if (!overlaps) {
+                val adjustedReading = contextAdjustedReading(originalText, surface, start, reading)
+                if (!isReadingPlausibleForSurface(surface, adjustedReading)) return null
+                if (!isReadingContextPlausible(originalText, surface, start, end, adjustedReading)) return null
                 return FuriganaAnnotation(
                     surface = surface,
-                    reading = contextAdjustedReading(originalText, surface, start, reading),
+                    reading = adjustedReading,
                     start = start,
                     end = end,
                     confidence = confidence
@@ -214,6 +224,38 @@ object FuriganaJsonParser {
         return JapaneseTextDetector.containsKanji(surface) || surface.any { isDigitLike(it) }
     }
 
+    private fun isReadingPlausibleForSurface(surface: String, reading: String): Boolean {
+        if (surface.any { isDigitLike(it) }) return true
+        if (surface.count { isKanji(it) } == 1 && reading.length > MAX_SINGLE_KANJI_READING_LENGTH) {
+            return false
+        }
+        val maxReadingLength = max(MIN_READING_LENGTH_LIMIT, surface.length * MAX_READING_LENGTH_PER_SOURCE_CHAR)
+        return reading.length <= maxReadingLength
+    }
+
+    private fun isReadingContextPlausible(
+        originalText: String,
+        surface: String,
+        start: Int,
+        end: Int,
+        reading: String
+    ): Boolean {
+        if (FuriganaSurfaceBoundary.hasHardInternalBoundary(originalText, start, end)) return false
+        if (surface.any { isDigitLike(it) }) return true
+        if (surface.count { isKanji(it) } == 1 && reading.length > MAX_SINGLE_KANJI_READING_LENGTH) {
+            return false
+        }
+        val following = originalText.substring(end.coerceIn(0, originalText.length))
+        if (surface.none { isKana(it) }) {
+            VERB_PHRASE_SUFFIXES.forEach { suffix ->
+                if (reading.endsWith(suffix) && !following.startsWith(suffix)) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
     private fun contextAdjustedReading(
         originalText: String,
         candidate: FuriganaCandidate,
@@ -222,6 +264,7 @@ object FuriganaJsonParser {
         JapaneseNumberReading.readNumericExpression(candidate.surface)?.let { return it }
         val previous = previousNonWhitespaceChar(originalText, candidate.start)
         return when {
+            candidate.surface == "人気" && isHitokeContext(originalText, candidate.end) -> "ひとけ"
             candidate.surface == "月" && previous != null && isDigitLike(previous) -> "がつ"
             candidate.surface == "年" && previous != null && isDigitLike(previous) -> "ねん"
             candidate.surface == "日" -> previousNumberValueBefore(originalText, candidate.start)
@@ -239,7 +282,9 @@ object FuriganaJsonParser {
     ): String {
         JapaneseNumberReading.readNumericExpression(surface)?.let { return it }
         val previous = previousNonWhitespaceChar(originalText, start)
+        val end = start + surface.length
         return when {
+            surface == "人気" && isHitokeContext(originalText, end) -> "ひとけ"
             surface == "月" && previous != null && isDigitLike(previous) -> "がつ"
             surface == "年" && previous != null && isDigitLike(previous) -> "ねん"
             surface == "日" -> previousNumberValueBefore(originalText, start)
@@ -247,6 +292,18 @@ object FuriganaJsonParser {
                 ?: modelReading
             else -> modelReading
         }
+    }
+
+    private fun isHitokeContext(text: String, end: Int): Boolean {
+        if (end < 0 || end > text.length) return false
+        return listOf(
+            "がない",
+            "が無い",
+            "のない",
+            "の無い",
+            "ない",
+            "無い"
+        ).any { suffix -> text.startsWith(suffix, end) }
     }
 
     private fun previousNonWhitespaceChar(text: String, index: Int): Char? {
@@ -261,6 +318,14 @@ object FuriganaJsonParser {
 
     private fun isDigitLike(char: Char): Boolean {
         return char in '0'..'9' || char in '０'..'９'
+    }
+
+    private fun isKanji(char: Char): Boolean {
+        return char in '\u4E00'..'\u9FFF' || char in '\u3400'..'\u4DBF'
+    }
+
+    private fun isKana(char: Char): Boolean {
+        return char in '\u3040'..'\u30FF' || char in '\u31F0'..'\u31FF'
     }
 
     private fun previousNumberValueBefore(text: String, index: Int): Int? {
@@ -370,5 +435,20 @@ object FuriganaJsonParser {
         val id: Int,
         val reading: String,
         val confidence: Double
+    )
+
+    private const val MIN_READING_LENGTH_LIMIT = 6
+    private const val MAX_READING_LENGTH_PER_SOURCE_CHAR = 3
+    private const val MAX_SINGLE_KANJI_READING_LENGTH = 4
+    private val VERB_PHRASE_SUFFIXES = listOf(
+        "して",
+        "した",
+        "する",
+        "いた",
+        "いて",
+        "った",
+        "って",
+        "ない",
+        "ます"
     )
 }

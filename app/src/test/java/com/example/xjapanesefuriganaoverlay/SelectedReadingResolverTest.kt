@@ -114,6 +114,105 @@ class SelectedReadingResolverTest {
         assertFirstCandidate("取り扱い", "取り扱い")
     }
 
+    @Test
+    fun candidateGenerationDoesNotCrossParticlesBetweenWords() {
+        val dateSurfaces = FuriganaPromptBuilder.annotationCandidates("五月七日、私は上海にいました")
+            .map { it.surface }
+
+        assertTrue(dateSurfaces.contains("私"))
+        assertTrue(dateSurfaces.contains("上海"))
+        assertFalse(dateSurfaces.contains("私は上海"))
+        assertFalse(dateSurfaces.contains("上海に"))
+
+        val sentenceSurfaces = FuriganaPromptBuilder.annotationCandidates(
+            "今日は人気のない道を一人で歩いていたら、人気バンドの新曲が流れてきた。"
+        ).map { it.surface }
+
+        assertFalse(sentenceSurfaces.contains("道を一人"))
+        assertFalse(sentenceSurfaces.contains("新曲が流"))
+    }
+
+    @Test
+    fun candidateGenerationKeepsDenseLongSentenceTargets() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "四月一日、東京の日本橋で四月一日君尋の話をしていたら、人気のない道から小鳥遊さんが一人で歩いてきた。"
+        ).map { it.surface }
+
+        assertTrue(surfaces.contains("東京"))
+        assertTrue(surfaces.contains("日本橋"))
+        assertTrue(surfaces.contains("四月一日君尋"))
+        assertTrue(surfaces.contains("話"))
+    }
+
+    @Test
+    fun candidateGenerationDoesNotMergeModifierPhrasesIntoNouns() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "少し怖い話を聞いたあと、少し楽しい動画を見て気分を変えた。"
+        ).map { it.surface }
+
+        assertFalse(surfaces.contains("少し怖い話"))
+        assertFalse(surfaces.contains("少し楽しい動画"))
+        assertTrue(surfaces.contains("少し"))
+        assertTrue(surfaces.contains("怖い"))
+        assertTrue(surfaces.contains("話"))
+        assertTrue(surfaces.contains("楽しい"))
+        assertTrue(surfaces.contains("動画"))
+    }
+
+    @Test
+    fun candidateGenerationDoesNotMergeAdverbialNounOrKanjiNumberWithFollowingVerb() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "昔読んだ小説を思い出して、もう一度読み始めたけど、感想を書き終える前に寝てしまった。"
+        ).map { it.surface }
+
+        assertFalse(surfaces.contains("昔読"))
+        assertFalse(surfaces.contains("一度読"))
+        assertFalse(surfaces.contains("一度読み始"))
+        assertTrue(surfaces.contains("昔"))
+        assertTrue(surfaces.contains("読"))
+        assertTrue(surfaces.contains("一度"))
+        assertTrue(surfaces.contains("読み始め") || surfaces.contains("読み始めた"))
+        assertTrue(surfaces.contains("書き終える"))
+    }
+
+    @Test
+    fun candidateGenerationDoesNotMergeTemporalAdverbWithFollowingVerb() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "昨日見た映画を思い出しながら、もう一度見直して、感想を短く書き直した。"
+        ).map { it.surface }
+
+        assertFalse(surfaces.contains("昨日見"))
+        assertFalse(surfaces.contains("昨日見た"))
+        assertTrue(surfaces.contains("昨日"))
+        assertTrue(surfaces.contains("見た"))
+    }
+
+    @Test
+    fun candidateGenerationSplitsStandaloneNounBeforeFollowingVerb() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "映画見たあと本読んだ。"
+        ).map { it.surface }
+
+        assertFalse(surfaces.contains("映画見"))
+        assertFalse(surfaces.contains("映画見た"))
+        assertFalse(surfaces.contains("本読"))
+        assertTrue(surfaces.contains("映画"))
+        assertTrue(surfaces.contains("見た"))
+        assertTrue(surfaces.contains("本"))
+        assertTrue(surfaces.contains("読"))
+    }
+
+    @Test
+    fun candidateGenerationKeepsLikelyProperNameThatLooksTemporal() {
+        val surfaces = FuriganaPromptBuilder.annotationCandidates(
+            "明日香さんは昨日見た映画の話をした。"
+        ).map { it.surface }
+
+        assertTrue(surfaces.contains("明日香"))
+        assertFalse(surfaces.contains("昨日見"))
+        assertFalse(surfaces.contains("昨日見た"))
+    }
+
     private fun resolver(source: String, vararg hints: ReadingHint): SelectedReadingResolver {
         return SelectedReadingResolver(source, hints.toList())
     }

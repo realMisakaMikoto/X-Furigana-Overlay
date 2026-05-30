@@ -250,19 +250,13 @@ class MainActivity : Activity() {
 
         enabledSwitch.setOnCheckedChangeListener { _, checked ->
             settingsRepository.enabled = checked
-            if (!checked) {
-                OverlayController.hideAll()
-            } else if (Settings.canDrawOverlays(this)) {
+            if (Settings.canDrawOverlays(this)) {
                 OverlayController.showButton(applicationContext)
             }
         }
 
         findViewById<Button>(R.id.button_show_overlay).setOnClickListener {
             saveSettings()
-            if (!settingsRepository.enabled) {
-                Toast.makeText(this, "请先启用服务开关", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
             if (!Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "请先开启悬浮窗权限", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener

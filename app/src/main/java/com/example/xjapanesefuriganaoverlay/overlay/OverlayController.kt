@@ -475,18 +475,22 @@ object OverlayController {
         val cache = FuriganaCache(context)
         val cached = cache.get(post.text, settingsRepository.model)
         if (cached != null) {
+            val cachedAnnotations = FuriganaAnnotationCodec.decode(cached.annotationHintsJson)
+                .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(post.text, cached.rubyHtml) }
+            val cachedPlain = cached.plainText.takeIf { it.isNotBlank() }
+                ?: RubyHtmlRenderer.renderPlainText(post.text, cachedAnnotations)
+                    .takeIf { cachedAnnotations.isNotEmpty() }
+                ?: post.text
             val renderStart = SystemClock.elapsedRealtime()
-            showHtml(webView, progress, cached.rubyHtml, post.text)
+            showHtml(webView, progress, cached.rubyHtml, cachedPlain)
             XFuriganaPerf.d(
                 "result cache_hit clickToRenderMs=${SystemClock.elapsedRealtime() - clickedAt} " +
                     "webViewLoadMs=${SystemClock.elapsedRealtime() - renderStart}"
             )
-            val cachedAnnotations = FuriganaAnnotationCodec.decode(cached.annotationHintsJson)
-                .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(post.text, cached.rubyHtml) }
             NoteRepository(context).saveNote(
                 originalText = post.text,
                 rubyHtml = cached.rubyHtml,
-                plainText = post.text,
+                plainText = cachedPlain,
                 modelName = settingsRepository.model,
                 annotationHintsJson = cached.annotationHintsJson
             )
@@ -516,7 +520,7 @@ object OverlayController {
                     val html = RubyHtmlRenderer.renderHtml(post.text, annotations)
                     val plain = RubyHtmlRenderer.renderPlainText(post.text, annotations)
                     val annotationHintsJson = FuriganaAnnotationCodec.encode(annotations)
-                    cache.put(post.text, settingsRepository.model, html, annotationHintsJson)
+                    cache.put(post.text, settingsRepository.model, html, plain, annotationHintsJson)
                     NoteRepository(context).saveNote(
                         originalText = post.text,
                         rubyHtml = html,

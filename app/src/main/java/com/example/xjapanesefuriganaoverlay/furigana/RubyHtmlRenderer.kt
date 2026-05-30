@@ -57,8 +57,10 @@ object RubyHtmlRenderer {
             builder.append('(')
             builder.append(display.rubyReading)
             builder.append(')')
-            builder.append(originalText.substring(display.rubyBaseEnd, annotation.end))
-            cursor = annotation.end
+            if (display.rubyBaseEnd < annotation.end) {
+                builder.append(originalText.substring(display.rubyBaseEnd, annotation.end))
+            }
+            cursor = display.consumedEnd
         }
         builder.append(originalText.substring(cursor))
         return builder.toString()
@@ -82,8 +84,10 @@ object RubyHtmlRenderer {
             builder.append("<rt>")
             builder.append(escapeHtml(display.rubyReading))
             builder.append("</rt></ruby>")
-            builder.append(escapeHtml(originalText.substring(display.rubyBaseEnd, annotation.end)))
-            cursor = annotation.end
+            if (display.rubyBaseEnd < annotation.end) {
+                builder.append(escapeHtml(originalText.substring(display.rubyBaseEnd, annotation.end)))
+            }
+            cursor = display.consumedEnd
         }
         builder.append(escapeHtml(originalText.substring(cursor)))
         return builder.toString()
@@ -97,15 +101,17 @@ object RubyHtmlRenderer {
         var rubyBaseEnd = annotation.end
         var rubyReading = annotation.reading
 
-        val trailingInside = duplicatedTrailingKanaLength(
+        preferredFollowingKanaExtension(
             sourceText = sourceText,
-            start = annotation.start,
-            end = annotation.end,
+            annotation = annotation,
+            limitEnd = limitEnd,
             reading = rubyReading
-        )
-        if (trailingInside > 0) {
-            rubyBaseEnd -= trailingInside
-            rubyReading = rubyReading.dropLast(trailingInside)
+        )?.let { extension ->
+            return DisplayAnnotation(
+                rubyBaseEnd = extension.end,
+                rubyReading = extension.reading,
+                consumedEnd = extension.end
+            )
         }
 
         val following = duplicatedFollowingKanaLength(
@@ -115,22 +121,35 @@ object RubyHtmlRenderer {
             reading = rubyReading
         )
         if (following > 0) {
-            rubyReading = rubyReading.dropLast(following)
+            return DisplayAnnotation(
+                rubyBaseEnd = annotation.end + following,
+                rubyReading = rubyReading,
+                consumedEnd = annotation.end + following
+            )
+        }
+
+        val trailing = trailingKanaText(
+            sourceText = sourceText,
+            start = annotation.start,
+            end = annotation.end
+        )
+        if (trailing.isNotEmpty() && !katakanaToHiragana(rubyReading).endsWith(trailing)) {
+            rubyBaseEnd -= trailing.length
         }
 
         return DisplayAnnotation(
             rubyBaseEnd = rubyBaseEnd,
-            rubyReading = rubyReading.ifBlank { annotation.reading }
+            rubyReading = rubyReading.ifBlank { annotation.reading },
+            consumedEnd = annotation.end
         )
     }
 
-    private fun duplicatedTrailingKanaLength(
+    private fun trailingKanaText(
         sourceText: String,
         start: Int,
-        end: Int,
-        reading: String
-    ): Int {
-        if (end <= start || reading.isBlank()) return 0
+        end: Int
+    ): String {
+        if (end <= start) return ""
 
         val kana = StringBuilder()
         var index = end - 1
@@ -140,18 +159,7 @@ object RubyHtmlRenderer {
             kana.insert(0, toHiragana(normalized))
             index--
         }
-        if (kana.isEmpty()) return 0
-
-        val kanaText = kana.toString()
-        val normalizedReading = katakanaToHiragana(reading)
-        for (length in kanaText.length downTo 1) {
-            if (end - length <= start) continue
-            val suffix = kanaText.substring(kanaText.length - length)
-            if (normalizedReading.endsWith(suffix)) {
-                return length
-            }
-        }
-        return 0
+        return kana.toString()
     }
 
     private fun duplicatedFollowingKanaLength(
@@ -184,6 +192,29 @@ object RubyHtmlRenderer {
             }
         }
         return 0
+    }
+
+    private fun preferredFollowingKanaExtension(
+        sourceText: String,
+        annotation: FuriganaAnnotation,
+        limitEnd: Int,
+        reading: String
+    ): FollowingExtension? {
+        if (annotation.end >= limitEnd || annotation.end >= sourceText.length) return null
+        val safeLimit = min(limitEnd, sourceText.length)
+        val maxEnd = min(annotation.end + MAX_PREFERRED_FOLLOWING_KANA, safeLimit)
+        for (end in maxEnd downTo annotation.end + 1) {
+            val added = sourceText.substring(annotation.end, end)
+            if (added.any { !isKanaOrLongVowel(normalizeSingleChar(it)) }) continue
+            val surface = sourceText.substring(annotation.start, end)
+            val expectedReading = PREFERRED_MIXED_SURFACE_READINGS[surface] ?: continue
+            val normalizedReading = katakanaToHiragana(reading)
+            val addedReading = katakanaToHiragana(added)
+            if (normalizedReading == expectedReading || normalizedReading + addedReading == expectedReading) {
+                return FollowingExtension(end, expectedReading)
+            }
+        }
+        return null
     }
 
     private fun cleanAnnotations(
@@ -271,8 +302,18 @@ object RubyHtmlRenderer {
 
     private data class DisplayAnnotation(
         val rubyBaseEnd: Int,
-        val rubyReading: String
+        val rubyReading: String,
+        val consumedEnd: Int
+    )
+
+    private data class FollowingExtension(
+        val end: Int,
+        val reading: String
     )
 
     private const val KATAKANA_TO_HIRAGANA_OFFSET = 0x60
+    private const val MAX_PREFERRED_FOLLOWING_KANA = 3
+    private val PREFERRED_MIXED_SURFACE_READINGS = mapOf(
+        "大好き" to "だいすき"
+    )
 }

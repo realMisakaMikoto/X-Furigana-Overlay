@@ -13,6 +13,7 @@ class FuriganaCache(context: Context) {
             val json = JSONObject(raw)
             CachedFurigana(
                 rubyHtml = json.getString("rubyHtml"),
+                plainText = json.optString("plainText"),
                 annotationHintsJson = json.optString("annotationHintsJson"),
                 createdAt = json.getLong("createdAt")
             )
@@ -23,10 +24,12 @@ class FuriganaCache(context: Context) {
         originalText: String,
         modelName: String,
         rubyHtml: String,
+        plainText: String = "",
         annotationHintsJson: String = ""
     ) {
         val value = JSONObject()
             .put("rubyHtml", rubyHtml)
+            .put("plainText", plainText)
             .put("annotationHintsJson", annotationHintsJson)
             .put("createdAt", System.currentTimeMillis())
             .toString()
@@ -65,6 +68,7 @@ class FuriganaCache(context: Context) {
 
     data class CachedFurigana(
         val rubyHtml: String,
+        val plainText: String,
         val annotationHintsJson: String,
         val createdAt: Long
     )
@@ -72,7 +76,7 @@ class FuriganaCache(context: Context) {
     companion object {
         private const val PREFS_NAME = "x_japanese_furigana_cache"
         private const val ENTRY_PREFIX = "entry_"
-        private const val CACHE_VERSION = "candidate_segmentation_v5"
+        private const val CACHE_VERSION = "strict_candidate_v3_surface_boundary_safe"
         private const val MAX_ENTRIES = 500
     }
 }

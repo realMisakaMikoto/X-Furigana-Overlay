@@ -112,6 +112,12 @@ object FuriganaPromptBuilder {
         end: Int,
         candidates: MutableList<FuriganaCandidate>
     ) {
+        splitHardRunBoundary(text, start, end)?.let { split ->
+            addRunCandidates(text, start, split, candidates)
+            addRunCandidates(text, split, end, candidates)
+            return
+        }
+
         var cursor = start
         val previous = previousNonWhitespaceChar(text, start)
         if (
@@ -161,6 +167,8 @@ object FuriganaPromptBuilder {
         }
 
         var cursor = kanjiEnd
+        var currentKanjiStart = kanjiStart
+        var currentKanjiEnd = kanjiEnd
         while (cursor < text.length) {
             val kanaStart = cursor
             while (cursor < text.length && isHiragana(text[cursor])) {
@@ -169,9 +177,21 @@ object FuriganaPromptBuilder {
             if (kanaStart == cursor) return cursor
 
             if (cursor < text.length && isKanji(text[cursor])) {
+                if (!isAllowedMixedWordBridge(
+                        text = text,
+                        leftKanjiStart = currentKanjiStart,
+                        leftKanjiEnd = currentKanjiEnd,
+                        kanaStart = kanaStart,
+                        kanaEnd = cursor
+                    )
+                ) {
+                    return extendWithOkurigana(text, kanaStart, cursor)
+                }
+                currentKanjiStart = cursor
                 while (cursor < text.length && isKanji(text[cursor])) {
                     cursor++
                 }
+                currentKanjiEnd = cursor
                 continue
             }
 
@@ -192,6 +212,31 @@ object FuriganaPromptBuilder {
 
         val first = kanaRun.first()
         return if (first in SINGLE_OKURIGANA) kanaStart + 1 else kanaStart
+    }
+
+    private fun isAllowedMixedWordBridge(
+        text: String,
+        leftKanjiStart: Int,
+        leftKanjiEnd: Int,
+        kanaStart: Int,
+        kanaEnd: Int
+    ): Boolean {
+        val kanaRun = text.substring(kanaStart, kanaEnd)
+        if (kanaRun.isBlank() || kanaRun.length > MAX_INTERNAL_KANA_BETWEEN_KANJI) return false
+        if (kanaRun.any { it in PARTICLE_HIRAGANA }) return false
+        if (kanaRun.any { it !in INTERNAL_KANA_BETWEEN_KANJI }) return false
+
+        val nextKanji = text.getOrNull(kanaEnd)?.takeIf { isKanji(it) } ?: return false
+        val leftKanji = text.substring(leftKanjiStart, leftKanjiEnd)
+        return when {
+            nextKanji in MIXED_WORD_SECOND_KANJI -> true
+            leftKanji in MIXED_WORD_LEFT_SURFACES -> true
+            else -> false
+        }
+    }
+
+    private fun splitHardRunBoundary(text: String, start: Int, end: Int): Int? {
+        return FuriganaSurfaceBoundary.splitHardKanjiRun(text, start, end)
     }
 
     private fun addCandidate(
@@ -245,13 +290,21 @@ object FuriganaPromptBuilder {
     private const val NUMERIC_SUFFIX_KANJI = "年月日時分秒円歳才人個枚本回話巻号度"
     private const val MAX_NUMERIC_UNITS = 4
     private const val MAX_FULL_KANJI_RUN_CANDIDATE_LENGTH = 8
-    private const val SINGLE_OKURIGANA = "ちりみきぎしむびにいたてでぐげす"
+    private const val MAX_INTERNAL_KANA_BETWEEN_KANJI = 2
+    private const val PARTICLE_HIRAGANA = "はがをにへでともやの"
+    private const val INTERNAL_KANA_BETWEEN_KANJI = "ちりみきぎしびいべれ"
+    private const val SINGLE_OKURIGANA = "ちりみきぎしむびいたてぐげすめ"
+    private const val MIXED_WORD_SECOND_KANJI = "物込扱始終出入上下注立込替換返続切切終"
+    private val MIXED_WORD_LEFT_SURFACES = setOf("食", "申", "取", "読", "書", "思", "持")
     private val OKURIGANA_SUFFIXES = listOf(
         "させる",
         "られる",
         "れる",
         "せる",
         "ない",
+        "しい",
+        "めた",
+        "めて",
         "べる",
         "める",
         "ける",

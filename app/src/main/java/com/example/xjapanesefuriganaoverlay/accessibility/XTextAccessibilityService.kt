@@ -29,16 +29,14 @@ class XTextAccessibilityService : AccessibilityService() {
     private var lastDetectedPosts: List<DetectedPost> = emptyList()
     private var lastScanCompletedAt = 0L
     private var contentDirtySinceLastScan = true
-    private var overlayButtonShownForTarget = false
+    private var overlayButtonShown = false
     private var lastTargetPackageName: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         currentService = WeakReference(this)
         settingsRepository = SettingsRepository(applicationContext)
-        if (settingsRepository.enabled && Settings.canDrawOverlays(this)) {
-            showOverlayButtonIfNeeded()
-        }
+        showOverlayButtonIfNeeded()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -48,9 +46,10 @@ class XTextAccessibilityService : AccessibilityService() {
         val eventType = event.eventType
         val packageName = event.packageName?.toString()
         XFuriganaPerf.d("event type=$eventType package=$packageName")
+        showOverlayButtonIfNeeded()
 
         if (!settingsRepository.enabled) {
-            clearStateAndOverlay()
+            clearScanState()
             return
         }
 
@@ -62,7 +61,8 @@ class XTextAccessibilityService : AccessibilityService() {
                 shouldClearForNonTargetPackage(packageName)
             ) {
                 XFuriganaPerf.d("event non-target state package=$packageName clear=true")
-                clearStateAndOverlay()
+                clearScanState()
+                showOverlayButtonIfNeeded()
             } else {
                 XFuriganaPerf.d("event non-target transient package=$packageName clear=false")
             }
@@ -102,7 +102,8 @@ class XTextAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        clearStateAndOverlay()
+        clearScanState()
+        showOverlayButtonIfNeeded()
     }
 
     override fun onDestroy() {
@@ -333,23 +334,27 @@ class XTextAccessibilityService : AccessibilityService() {
     }
 
     private fun clearStateAndOverlay() {
+        clearScanState()
+        OverlayController.hideAll()
+        overlayButtonShown = false
+    }
+
+    private fun clearScanState() {
         pendingEventScanJob?.cancel()
         activeScanJob?.cancel()
         lastRawTextsHash = null
         lastDetectedPosts = emptyList()
         lastScanCompletedAt = 0L
         contentDirtySinceLastScan = true
-        overlayButtonShownForTarget = false
         lastTargetPackageName = null
         CurrentPostRepository.clear()
-        OverlayController.hideAll()
     }
 
     private fun showOverlayButtonIfNeeded() {
         if (!Settings.canDrawOverlays(this)) return
-        if (overlayButtonShownForTarget && OverlayController.isButtonVisible()) return
+        if (overlayButtonShown && OverlayController.isButtonVisible()) return
         OverlayController.showButton(applicationContext)
-        overlayButtonShownForTarget = OverlayController.isButtonVisible()
+        overlayButtonShown = OverlayController.isButtonVisible()
     }
 
     private fun screenBounds(): Rect {
