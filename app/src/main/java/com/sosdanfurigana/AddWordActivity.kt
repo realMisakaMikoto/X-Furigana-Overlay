@@ -71,13 +71,14 @@ class AddWordActivity : Activity() {
                     text = "手动加词"
                     textSize = 24f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(0xFFFFFFFF.toInt())
+                    setTextColor(AppUi.CREAM)
                     setPadding(0, dp(14), 0, 0)
                 })
                 addView(TextView(this@AddWordActivity).apply {
                     text = "从注音原文里选一段，读音能本地判断就不麻烦模型。"
-                    textSize = 14f
-                    setTextColor(0xFFEAF8FC.toInt())
+                    textSize = 13f
+                    setTextColor(AppUi.WARM_WHITE)
+                    setLineSpacing(dp(3).toFloat(), 1f)
                     setPadding(0, dp(6), 0, 0)
                 })
             },
@@ -126,7 +127,7 @@ class AddWordActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
             setTextColor(AppUi.INK)
-            setHintTextColor(0xFF8B9AA0.toInt())
+            setHintTextColor(AppUi.MUTED)
             background = AppUi.inputBackground(this@AddWordActivity)
             setPadding(dp(12), 0, dp(12), 0)
         }
@@ -141,7 +142,7 @@ class AddWordActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
             setTextColor(AppUi.INK)
-            setHintTextColor(0xFF8B9AA0.toInt())
+            setHintTextColor(AppUi.MUTED)
             background = AppUi.inputBackground(this@AddWordActivity)
             setPadding(dp(12), 0, dp(12), 0)
         }

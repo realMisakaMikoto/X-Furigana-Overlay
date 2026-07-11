@@ -215,18 +215,18 @@ object OverlayController {
         val root = LinearLayout(appContext).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
+                dp(appContext, 14),
                 dp(appContext, 12),
-                dp(appContext, 12),
-                dp(appContext, 12),
-                dp(appContext, 12)
+                dp(appContext, 14),
+                dp(appContext, 14)
             )
             background = roundedGradientDrawable(
                 AppUi.HAIR_DEEP,
                 Color.rgb(58, 36, 28),
-                dp(appContext, 14).toFloat(),
-                Color.argb(160, 169, 219, 234)
+                dp(appContext, 20).toFloat(),
+                Color.argb(90, 255, 212, 77)
             )
-            elevation = dp(appContext, 8).toFloat()
+            elevation = dp(appContext, 10).toFloat()
         }
         container.addView(
             root,
@@ -331,7 +331,9 @@ object OverlayController {
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(ProgressBar(context))
+                addView(ProgressBar(context).apply {
+                    indeterminateTintList = android.content.res.ColorStateList.valueOf(AppUi.HEADBAND)
+                })
                 addView(emptyText(context, message))
             },
             LinearLayout.LayoutParams(
@@ -656,7 +658,7 @@ object OverlayController {
                             text = title
                             textSize = 16f
                             typeface = Typeface.DEFAULT_BOLD
-                            setTextColor(0xFFFFF5D3.toInt())
+                            setTextColor(AppUi.CREAM)
                             maxLines = 1
                             setOnTouchListener(panelMoveTouchListener(context))
                         },
@@ -700,14 +702,15 @@ object OverlayController {
     ): TextView {
         return TouchTextView(context).apply {
             text = "↘"
-            textSize = 18f
+            textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(AppUi.HAIR_DEEP)
+            alpha = 0.9f
             background = roundedGradientDrawable(
                 AppUi.HEADBAND,
-                AppUi.UNIFORM_BLUE,
-                dp(context, 8).toFloat(),
-                Color.WHITE
+                AppUi.HEADBAND_DEEP,
+                dp(context, 12).toFloat(),
+                Color.argb(120, 255, 255, 255)
             )
             setOnTouchListener(PanelResizeTouchListener(wm, params, minWidth, minHeight))
         }
@@ -718,14 +721,19 @@ object OverlayController {
             text = post.text.take(100)
             textSize = 15f
             setTextColor(AppUi.INK)
-            setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12))
-            background = roundedDrawable(
-                Color.argb(238, 248, 251, 252),
-                dp(context, 10).toFloat(),
-                Color.argb(190, 169, 219, 234)
+            setLineSpacing(dp(context, 3).toFloat(), 1f)
+            setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
+            background = AppUi.ripple(
+                AppUi.rounded(
+                    context,
+                    Color.argb(242, 250, 252, 253),
+                    12,
+                    Color.argb(150, 169, 219, 234)
+                ),
+                0x33E59B2D
             )
             setOnClickListener { onClick() }
-            val margin = dp(context, 6)
+            val margin = dp(context, 8)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -739,7 +747,8 @@ object OverlayController {
         return TextView(context).apply {
             text = message
             textSize = 14f
-            setTextColor(0xFFEAF8FC.toInt())
+            setTextColor(AppUi.WARM_WHITE)
+            setLineSpacing(dp(context, 4).toFloat(), 1f)
             gravity = Gravity.CENTER
             setPadding(dp(context, 12), dp(context, 20), dp(context, 12), dp(context, 20))
         }
@@ -753,10 +762,20 @@ object OverlayController {
             minWidth = 0
             minimumHeight = 0
             minimumWidth = 0
-            setPadding(dp(context, 8), 0, dp(context, 8), 0)
+            stateListAnimator = null
+            setPadding(dp(context, 12), 0, dp(context, 12), 0)
             isAllCaps = false
             setTextColor(AppUi.HAIR)
-            background = AppUi.headbandButton(context)
+            background = AppUi.ripple(
+                AppUi.rounded(context, AppUi.HEADBAND_SOFT, 999, AppUi.HEADBAND_DEEP),
+                0x33E59B2D
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(context, 30)
+            ).apply {
+                marginStart = dp(context, 6)
+            }
         }
     }
 

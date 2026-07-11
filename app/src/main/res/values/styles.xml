@@ -4,8 +4,8 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowBackground">@drawable/bg_app_gradient</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">@color/haruhi_paper</item>
-        <item name="android:navigationBarColor">@color/haruhi_paper</item>
-        <item name="android:colorAccent">@color/haruhi_uniform_blue_deep</item>
+        <item name="android:statusBarColor">#F9FCFD</item>
+        <item name="android:navigationBarColor">#F5EFEA</item>
+        <item name="android:colorAccent">@color/haruhi_headband_deep</item>
     </style>
 </resources>

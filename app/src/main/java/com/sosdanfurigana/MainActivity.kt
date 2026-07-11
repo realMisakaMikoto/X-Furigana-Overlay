@@ -324,10 +324,18 @@ class MainActivity : Activity() {
     }
 
     private fun updatePermissionStatus() {
-        val accessibilityEnabled = isAccessibilityServiceEnabled()
-        val overlayEnabled = Settings.canDrawOverlays(this)
-        accessibilityStatus.text = if (accessibilityEnabled) "已开启" else "未开启"
-        overlayStatus.text = if (overlayEnabled) "已开启" else "未开启"
+        applyStatusChip(accessibilityStatus, isAccessibilityServiceEnabled())
+        applyStatusChip(overlayStatus, Settings.canDrawOverlays(this))
+    }
+
+    private fun applyStatusChip(chip: TextView, enabled: Boolean) {
+        chip.text = if (enabled) "已开启" else "未开启"
+        chip.setBackgroundResource(
+            if (enabled) R.drawable.bg_status_chip_on else R.drawable.bg_status_chip_off
+        )
+        chip.setTextColor(
+            getColor(if (enabled) R.color.haruhi_hair else R.color.haruhi_danger)
+        )
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {

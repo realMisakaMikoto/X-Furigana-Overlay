@@ -18,11 +18,12 @@ object RubyHtmlRenderer {
                 }
                 body {
                   margin: 0;
-                  padding: 12px;
+                  padding: 14px 12px;
                   background: transparent;
-                  color: #ffffff;
-                  font-size: 18px;
-                  line-height: 2.1;
+                  color: #F6EBE0;
+                  font-size: 19px;
+                  line-height: 2.3;
+                  letter-spacing: 0.02em;
                   word-break: break-word;
                   font-family: sans-serif;
                 }
@@ -30,8 +31,9 @@ object RubyHtmlRenderer {
                   ruby-position: over;
                 }
                 rt {
-                  font-size: 0.55em;
-                  opacity: 0.95;
+                  font-size: 0.5em;
+                  color: #FFD44D;
+                  letter-spacing: 0;
                 }
               </style>
             </head>

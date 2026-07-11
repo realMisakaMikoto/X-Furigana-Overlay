@@ -55,7 +55,7 @@ class NotesActivity : Activity() {
                         text = "笔记"
                         textSize = 24f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextColor(AppUi.CREAM)
                         setPadding(0, dp(14), 0, 0)
                     },
                     LinearLayout.LayoutParams(
@@ -65,9 +65,10 @@ class NotesActivity : Activity() {
                 )
                 addView(TextView(this@NotesActivity).apply {
                     text = "自动保存注音过的 post，之后可以继续分词加词。"
-                    textSize = 14f
-                    setTextColor(0xFFEAF8FC.toInt())
-                    setPadding(0, dp(6), 0, dp(12))
+                    textSize = 13f
+                    setTextColor(AppUi.WARM_WHITE)
+                    setLineSpacing(dp(3).toFloat(), 1f)
+                    setPadding(0, dp(6), 0, dp(14))
                 })
                 addView(Button(this@NotesActivity).apply {
                     text = "清空笔记"
@@ -117,24 +118,27 @@ class NotesActivity : Activity() {
     private fun noteView(note: FuriganaNote): View {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             background = AppUi.sectionBackground(this@NotesActivity)
             elevation = dp(1).toFloat()
             addView(TextView(this@NotesActivity).apply {
                 text = formatTime(note.updatedAt)
-                textSize = 12f
+                textSize = 11f
                 setTextColor(AppUi.HAIR_SOFT)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
             })
             addView(TextView(this@NotesActivity).apply {
                 text = note.originalText
                 textSize = 15f
                 setTextColor(AppUi.INK)
+                setLineSpacing(dp(3).toFloat(), 1f)
                 setPadding(0, dp(8), 0, 0)
             })
             addView(TextView(this@NotesActivity).apply {
                 text = note.plainText
-                textSize = 15f
+                textSize = 14f
                 setTextColor(AppUi.MUTED)
+                setLineSpacing(dp(3).toFloat(), 1f)
                 setPadding(0, dp(8), 0, 0)
             })
             addView(
@@ -153,12 +157,16 @@ class NotesActivity : Activity() {
                         Button(this@NotesActivity).apply {
                             text = "删除"
                             AppUi.danger(this)
+                            textSize = 12f
                             setOnClickListener {
                                 repository.deleteNote(note.id)
                                 renderNotes()
                             }
                         },
-                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
                             setMargins(dp(8), 0, 0, 0)
                         }
                     )

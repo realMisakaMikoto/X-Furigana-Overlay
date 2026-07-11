@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <corners android:radius="14dp" />
-    <gradient
-        android:angle="0"
-        android:startColor="@color/haruhi_hair"
-        android:endColor="@color/haruhi_uniform_blue_deep" />
-</shape>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFD44D">
+    <item>
+        <shape>
+            <solid android:color="@color/haruhi_hair" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+</ripple>

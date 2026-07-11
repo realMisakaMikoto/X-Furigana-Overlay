@@ -50,7 +50,7 @@ class WordbookActivity : Activity() {
                         text = "单词本"
                         textSize = 24f
                         typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(0xFFFFFFFF.toInt())
+                        setTextColor(AppUi.CREAM)
                         setPadding(0, dp(14), 0, 0)
                     },
                     LinearLayout.LayoutParams(
@@ -60,9 +60,10 @@ class WordbookActivity : Activity() {
                 )
                 addView(TextView(this@WordbookActivity).apply {
                     text = "把真正想记住的词收进这里。团长不负责替你背。"
-                    textSize = 14f
-                    setTextColor(0xFFEAF8FC.toInt())
-                    setPadding(0, dp(6), 0, dp(12))
+                    textSize = 13f
+                    setTextColor(AppUi.WARM_WHITE)
+                    setLineSpacing(dp(3).toFloat(), 1f)
+                    setPadding(0, dp(6), 0, dp(14))
                 })
                 addView(Button(this@WordbookActivity).apply {
                     text = "清空单词本"
@@ -108,35 +109,62 @@ class WordbookActivity : Activity() {
     private fun wordView(word: WordbookEntry): View {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             background = AppUi.sectionBackground(this@WordbookActivity)
             elevation = dp(1).toFloat()
             addView(TextView(this@WordbookActivity).apply {
-                text = "${word.surface}　${word.reading}"
-                textSize = 20f
-                setTextColor(AppUi.HAIR)
+                text = word.reading
+                textSize = 13f
+                setTextColor(AppUi.HAIR_SOFT)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             })
             addView(TextView(this@WordbookActivity).apply {
-                text = formatTime(word.updatedAt)
-                textSize = 12f
-                setTextColor(AppUi.HAIR_SOFT)
-                setPadding(0, dp(6), 0, 0)
+                text = word.surface
+                textSize = 24f
+                setTextColor(AppUi.INK)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(0, dp(2), 0, 0)
             })
             addView(TextView(this@WordbookActivity).apply {
                 text = word.sourceText
-                textSize = 14f
+                textSize = 13f
                 setTextColor(AppUi.MUTED)
+                setLineSpacing(dp(3).toFloat(), 1f)
                 setPadding(0, dp(8), 0, 0)
             })
-            addView(Button(this@WordbookActivity).apply {
-                text = "删除"
-                AppUi.danger(this)
-                setOnClickListener {
-                    repository.deleteWord(word.id)
-                    renderWords()
+            addView(
+                LinearLayout(this@WordbookActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(10), 0, 0)
+                    addView(
+                        TextView(this@WordbookActivity).apply {
+                            text = formatTime(word.updatedAt)
+                            textSize = 11f
+                            setTextColor(AppUi.HAIR_SOFT)
+                        },
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    )
+                    addView(
+                        Button(this@WordbookActivity).apply {
+                            text = "删除"
+                            AppUi.danger(this)
+                            textSize = 12f
+                            minHeight = 0
+                            minimumHeight = 0
+                            setPadding(dp(16), dp(8), dp(16), dp(8))
+                            setOnClickListener {
+                                repository.deleteWord(word.id)
+                                renderWords()
+                            }
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                    )
                 }
-            })
+            )
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT

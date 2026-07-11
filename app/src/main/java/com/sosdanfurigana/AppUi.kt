@@ -1,9 +1,12 @@
 package com.sosdanfurigana
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.widget.Button
 import android.widget.TextView
 
@@ -13,14 +16,20 @@ object AppUi {
     const val HAIR_SOFT = 0xFF7A5140.toInt()
     const val HEADBAND = 0xFFFFD44D.toInt()
     const val HEADBAND_DEEP = 0xFFE59B2D.toInt()
+    const val HEADBAND_SOFT = 0xFFFFF3CC.toInt()
     const val UNIFORM_BLUE = 0xFFA9DBEA.toInt()
     const val UNIFORM_BLUE_DEEP = 0xFF4CAACD.toInt()
     const val PAPER = 0xFFF8FBFC.toInt()
     const val SURFACE = Color.WHITE
     const val SURFACE_TINT = 0xFFEEF8FB.toInt()
-    const val INK = 0xFF1C1816.toInt()
-    const val MUTED = 0xFF75665F.toInt()
-    const val DANGER = 0xFFD84A36.toInt()
+    const val STROKE = 0xFFE2EDF1.toInt()
+    const val STROKE_STRONG = 0xFFC9DEE6.toInt()
+    const val INK = 0xFF201613.toInt()
+    const val MUTED = 0xFF6E5F58.toInt()
+    const val DANGER = 0xFFC93A28.toInt()
+    const val DANGER_SOFT = 0xFFFDEDEA.toInt()
+    const val CREAM = 0xFFFFF3CC.toInt()
+    const val WARM_WHITE = 0xFFF6EBE0.toInt()
 
     fun dp(context: Context, value: Int): Int {
         return (value * context.resources.displayMetrics.density).toInt()
@@ -36,10 +45,10 @@ object AppUi {
     fun heroBackground(context: Context): GradientDrawable {
         return GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
-            intArrayOf(HAIR, HAIR_SOFT, UNIFORM_BLUE)
+            intArrayOf(HAIR_DEEP, 0xFF3A241C.toInt(), HAIR)
         ).apply {
-            cornerRadius = dp(context, 22).toFloat()
-            setStroke(dp(context, 1), 0x44FFFFFF)
+            cornerRadius = dp(context, 24).toFloat()
+            setStroke(dp(context, 1), 0x40FFD44D)
         }
     }
 
@@ -47,8 +56,8 @@ object AppUi {
         return rounded(
             context = context,
             color = if (tinted) SURFACE_TINT else SURFACE,
-            radiusDp = if (tinted) 16 else 18,
-            strokeColor = if (tinted) 0xFFC8E6EF.toInt() else 0xFFDDEDF2.toInt()
+            radiusDp = if (tinted) 16 else 20,
+            strokeColor = if (tinted) 0xFFD2E8EF.toInt() else STROKE
         )
     }
 
@@ -57,29 +66,24 @@ object AppUi {
             context = context,
             color = 0xFFFCFEFF.toInt(),
             radiusDp = 12,
-            strokeColor = 0xFFBFDCE5.toInt()
+            strokeColor = STROKE_STRONG
         )
     }
 
-    fun hairButton(context: Context): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(HAIR, UNIFORM_BLUE_DEEP)
-        ).apply {
-            cornerRadius = dp(context, 14).toFloat()
-        }
+    fun hairButton(context: Context): Drawable {
+        return ripple(rounded(context, HAIR, 14), 0x40FFD44D)
     }
 
-    fun headbandButton(context: Context): GradientDrawable {
-        return rounded(context, 0xFFFFF5D3.toInt(), 14, HEADBAND_DEEP)
+    fun headbandButton(context: Context): Drawable {
+        return ripple(rounded(context, HEADBAND_SOFT, 14, HEADBAND_DEEP), 0x33E59B2D)
     }
 
-    fun ghostButton(context: Context): GradientDrawable {
-        return rounded(context, 0xFFEAF7FB.toInt(), 14, 0xFF9FD2E0.toInt())
+    fun ghostButton(context: Context): Drawable {
+        return ripple(rounded(context, SURFACE, 14, STROKE_STRONG), 0x294CAACD)
     }
 
-    fun dangerButton(context: Context): GradientDrawable {
-        return rounded(context, 0xFFFCE6E1.toInt(), 14, DANGER)
+    fun dangerButton(context: Context): Drawable {
+        return ripple(rounded(context, DANGER_SOFT, 14, 0xFFE8A79D.toInt()), 0x26C93A28)
     }
 
     fun headbandRule(context: Context): GradientDrawable {
@@ -89,6 +93,14 @@ object AppUi {
         ).apply {
             cornerRadius = dp(context, 999).toFloat()
         }
+    }
+
+    fun ripple(content: GradientDrawable, rippleColor: Int): RippleDrawable {
+        val mask = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = content.cornerRadius
+        }
+        return RippleDrawable(ColorStateList.valueOf(rippleColor), content, mask)
     }
 
     fun rounded(
