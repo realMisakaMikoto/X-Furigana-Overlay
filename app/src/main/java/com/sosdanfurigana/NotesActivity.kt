@@ -1,33 +1,52 @@
 package com.sosdanfurigana
 
 import android.app.Activity
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.sosdanfurigana.data.FuriganaNote
 import com.sosdanfurigana.data.NoteRepository
+import com.sosdanfurigana.data.WordbookRepository
+import com.sosdanfurigana.furigana.FuriganaAnnotation
 import com.sosdanfurigana.furigana.FuriganaAnnotationCodec
 import com.sosdanfurigana.furigana.RubyAnnotationExtractor
+import com.sosdanfurigana.japanese.JapaneseSearch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 class NotesActivity : Activity() {
     private lateinit var repository: NoteRepository
+    private lateinit var wordbookRepository: WordbookRepository
     private lateinit var list: LinearLayout
+    private var searchQuery = ""
+    private var timeFilter = TimeFilter.ALL
+    private var customRangeStart = 0L
+    private var customRangeEndExclusive = 0L
+    private val chipViews = mutableMapOf<TimeFilter, TextView>()
+    private val corpusCache = mutableMapOf<String, String>()
+    private var readingPairs: List<Pair<String, String>> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = NoteRepository(applicationContext)
+        wordbookRepository = WordbookRepository(applicationContext)
         setContentView(createContentView())
+        refreshReadingPairs()
         renderNotes()
     }
 
@@ -75,6 +94,7 @@ class NotesActivity : Activity() {
                     AppUi.secondary(this)
                     setOnClickListener {
                         repository.clear()
+                        corpusCache.clear()
                         renderNotes()
                         Toast.makeText(this@NotesActivity, "已清空笔记", Toast.LENGTH_SHORT).show()
                     }
@@ -85,6 +105,62 @@ class NotesActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         )
+
+        root.addView(
+            EditText(this).apply {
+                hint = "搜索笔记：汉字、假名都能搜到"
+                setSingleLine(true)
+                textSize = 14f
+                setTextColor(AppUi.INK)
+                setHintTextColor(AppUi.MUTED)
+                background = AppUi.inputBackground(this@NotesActivity)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun afterTextChanged(s: Editable?) {
+                        searchQuery = s?.toString().orEmpty()
+                        renderNotes()
+                    }
+                })
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48)
+            ).apply {
+                setMargins(0, dp(12), 0, 0)
+            }
+        )
+
+        root.addView(
+            HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(
+                    LinearLayout(this@NotesActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        TimeFilter.entries.forEach { filter ->
+                            val chip = filterChip(filter)
+                            chipViews[filter] = chip
+                            addView(
+                                chip,
+                                LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    marginEnd = dp(8)
+                                }
+                            )
+                        }
+                    }
+                )
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dp(10), 0, 0)
+            }
+        )
+        refreshChipStyles()
 
         val scrollView = ScrollView(this)
         list = LinearLayout(this).apply {
@@ -103,6 +179,143 @@ class NotesActivity : Activity() {
         return root
     }
 
+    private fun filterChip(filter: TimeFilter): TextView {
+        return TextView(this).apply {
+            text = filter.label
+            textSize = 12f
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setOnClickListener {
+                if (filter == TimeFilter.CUSTOM) {
+                    pickCustomRange()
+                } else {
+                    timeFilter = filter
+                    refreshChipStyles()
+                    renderNotes()
+                }
+            }
+        }
+    }
+
+    private fun refreshChipStyles() {
+        chipViews.forEach { (filter, chip) ->
+            val selected = filter == timeFilter
+            chip.background = if (selected) {
+                AppUi.rounded(this, AppUi.HEADBAND_SOFT, 999, AppUi.HEADBAND_DEEP)
+            } else {
+                AppUi.rounded(this, AppUi.SURFACE, 999, AppUi.STROKE_STRONG)
+            }
+            chip.setTextColor(if (selected) AppUi.HAIR else AppUi.MUTED)
+            chip.typeface = if (selected) {
+                android.graphics.Typeface.DEFAULT_BOLD
+            } else {
+                android.graphics.Typeface.DEFAULT
+            }
+            if (filter == TimeFilter.CUSTOM) {
+                chip.text = if (timeFilter == TimeFilter.CUSTOM && customRangeStart > 0L) {
+                    val format = SimpleDateFormat("MM.dd", Locale.getDefault())
+                    "${format.format(Date(customRangeStart))}–" +
+                        format.format(Date(customRangeEndExclusive - 1))
+                } else {
+                    TimeFilter.CUSTOM.label
+                }
+            }
+        }
+    }
+
+    private fun pickCustomRange() {
+        Toast.makeText(this, "团长发问：从哪一天开始？", Toast.LENGTH_SHORT).show()
+        val now = Calendar.getInstance()
+        DatePickerDialog(
+            this,
+            { _, startYear, startMonth, startDay ->
+                Toast.makeText(this, "那么，到哪一天结束？", Toast.LENGTH_SHORT).show()
+                DatePickerDialog(
+                    this,
+                    { _, endYear, endMonth, endDay ->
+                        val start = dayStartMillis(startYear, startMonth, startDay)
+                        val end = dayStartMillis(endYear, endMonth, endDay) + DAY_MS
+                        customRangeStart = minOf(start, end - DAY_MS)
+                        customRangeEndExclusive = maxOf(end, start + DAY_MS)
+                        timeFilter = TimeFilter.CUSTOM
+                        refreshChipStyles()
+                        renderNotes()
+                    },
+                    startYear,
+                    startMonth,
+                    startDay
+                ).show()
+            },
+            now.get(Calendar.YEAR),
+            now.get(Calendar.MONTH),
+            now.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    private fun dayStartMillis(year: Int, month: Int, day: Int): Long {
+        return Calendar.getInstance().apply {
+            clear()
+            set(year, month, day)
+        }.timeInMillis
+    }
+
+    private fun matchesTime(timeMillis: Long): Boolean {
+        return when (timeFilter) {
+            TimeFilter.ALL -> true
+            TimeFilter.TODAY -> timeMillis >= startOfToday()
+            TimeFilter.WEEK -> timeMillis >= startOfWeek()
+            TimeFilter.MONTH -> timeMillis >= startOfMonth()
+            TimeFilter.CUSTOM ->
+                timeMillis >= customRangeStart && timeMillis < customRangeEndExclusive
+        }
+    }
+
+    private fun startOfToday(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private fun startOfWeek(): Long {
+        val today = startOfToday()
+        val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        val daysSinceMonday = (dayOfWeek + 5) % 7
+        return today - daysSinceMonday * DAY_MS
+    }
+
+    private fun startOfMonth(): Long {
+        return Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private fun refreshReadingPairs() {
+        val wordPairs = wordbookRepository.getWords().map { it.surface to it.reading }
+        val notePairs = repository.getNotes().flatMap { note ->
+            decodeAnnotations(note).map { it.surface to it.reading }
+        }
+        readingPairs = (wordPairs + notePairs).distinct()
+    }
+
+    private fun decodeAnnotations(note: FuriganaNote): List<FuriganaAnnotation> {
+        return FuriganaAnnotationCodec.decode(note.annotationHintsJson)
+            .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(note.originalText, note.rubyHtml) }
+    }
+
+    private fun corpusFor(note: FuriganaNote): String {
+        return corpusCache.getOrPut(note.id) {
+            val hintText = decodeAnnotations(note)
+                .joinToString(" ") { "${it.surface} ${it.reading}" }
+            JapaneseSearch.normalize("${note.originalText}\n${note.plainText}\n$hintText")
+        }
+    }
+
     private fun renderNotes() {
         list.removeAllViews()
         val notes = repository.getNotes()
@@ -110,7 +323,18 @@ class NotesActivity : Activity() {
             list.addView(emptyText("暂无笔记。成功注音的 post 会自动保存在这里。"))
             return
         }
-        notes.forEach { note ->
+        val queryVariants = JapaneseSearch.expandQuery(searchQuery, readingPairs)
+        val filtered = notes.filter { note ->
+            matchesTime(note.updatedAt) &&
+                JapaneseSearch.matches(queryVariants, corpusFor(note))
+        }
+        if (filtered.isEmpty()) {
+            list.addView(
+                emptyText("一条都没找到。换个关键词或时间段吧，本团长的搜索可不会冤枉任何一条笔记。")
+            )
+            return
+        }
+        filtered.forEach { note ->
             list.addView(noteView(note))
         }
     }
@@ -160,6 +384,7 @@ class NotesActivity : Activity() {
                             textSize = 12f
                             setOnClickListener {
                                 repository.deleteNote(note.id)
+                                corpusCache.remove(note.id)
                                 renderNotes()
                             }
                         },
@@ -183,8 +408,7 @@ class NotesActivity : Activity() {
 
     private fun openAddWord(note: FuriganaNote) {
         val hints = JSONArray()
-        val annotations = FuriganaAnnotationCodec.decode(note.annotationHintsJson)
-            .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(note.originalText, note.rubyHtml) }
+        val annotations = decodeAnnotations(note)
         annotations
             .forEach { annotation ->
                 hints.put(
@@ -208,15 +432,9 @@ class NotesActivity : Activity() {
             textSize = 15f
             setTextColor(AppUi.MUTED)
             gravity = Gravity.CENTER
+            setLineSpacing(dp(3).toFloat(), 1f)
             background = AppUi.sectionBackground(this@NotesActivity, tinted = true)
-            setPadding(dp(12), dp(40), dp(12), dp(40))
-        }
-    }
-
-    private fun roundedBackground(color: Int): android.graphics.drawable.GradientDrawable {
-        return android.graphics.drawable.GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(8).toFloat()
+            setPadding(dp(16), dp(40), dp(16), dp(40))
         }
     }
 
@@ -227,5 +445,17 @@ class NotesActivity : Activity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private enum class TimeFilter(val label: String) {
+        ALL("全部"),
+        TODAY("今天"),
+        WEEK("本周"),
+        MONTH("本月"),
+        CUSTOM("自定义")
+    }
+
+    companion object {
+        private const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }

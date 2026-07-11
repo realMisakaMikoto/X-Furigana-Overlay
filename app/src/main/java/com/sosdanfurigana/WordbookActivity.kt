@@ -2,15 +2,19 @@ package com.sosdanfurigana
 
 import android.app.Activity
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.sosdanfurigana.data.WordbookEntry
 import com.sosdanfurigana.data.WordbookRepository
+import com.sosdanfurigana.japanese.JapaneseSearch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -18,6 +22,7 @@ import java.util.Locale
 class WordbookActivity : Activity() {
     private lateinit var repository: WordbookRepository
     private lateinit var list: LinearLayout
+    private var searchQuery = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,6 +82,31 @@ class WordbookActivity : Activity() {
             }
         )
 
+        root.addView(
+            EditText(this).apply {
+                hint = "搜索单词：汉字、假名都能搜到"
+                setSingleLine(true)
+                textSize = 14f
+                setTextColor(AppUi.INK)
+                setHintTextColor(AppUi.MUTED)
+                background = AppUi.inputBackground(this@WordbookActivity)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                    override fun afterTextChanged(s: Editable?) {
+                        searchQuery = s?.toString().orEmpty()
+                        renderWords()
+                    }
+                })
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(48)
+            ).apply {
+                setMargins(0, dp(12), 0, 0)
+            }
+        )
+
         val scrollView = ScrollView(this)
         list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -101,7 +131,19 @@ class WordbookActivity : Activity() {
             list.addView(emptyText("暂无单词。注音结果页可以把词加入单词本。"))
             return
         }
-        words.forEach { word ->
+        val readingPairs = words.map { it.surface to it.reading }
+        val queryVariants = JapaneseSearch.expandQuery(searchQuery, readingPairs)
+        val filtered = words.filter { word ->
+            JapaneseSearch.matches(
+                queryVariants,
+                JapaneseSearch.normalize("${word.surface}\n${word.reading}\n${word.sourceText}")
+            )
+        }
+        if (filtered.isEmpty()) {
+            list.addView(emptyText("没有找到这个词。要么换个搜法，要么就趁现在去把它抓回来！"))
+            return
+        }
+        filtered.forEach { word ->
             list.addView(wordView(word))
         }
     }
