@@ -113,6 +113,20 @@ class WordbookActivity : Activity() {
                         )
                         addView(
                             Button(this@WordbookActivity).apply {
+                                text = "导出 Anki"
+                                AppUi.ghost(this)
+                                textSize = 12f
+                                setOnClickListener { exportToAnki() }
+                            },
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                dp(44)
+                            ).apply {
+                                marginStart = dp(8)
+                            }
+                        )
+                        addView(
+                            Button(this@WordbookActivity).apply {
                                 text = "清空单词本"
                                 AppUi.danger(this)
                                 textSize = 12f
@@ -374,7 +388,70 @@ class WordbookActivity : Activity() {
         }
     }
 
+    private fun exportToAnki() {
+        if (repository.getWords().isEmpty()) {
+            Toast.makeText(this, "单词本还是空的，先去收点词再谈导出！", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, "sos_wordbook_anki.txt")
+        }
+        startActivityForResult(intent, REQUEST_EXPORT_ANKI)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_EXPORT_ANKI || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val words = repository.getWords()
+        runCatching {
+            val stream = contentResolver.openOutputStream(uri)
+                ?: error("无法打开导出文件")
+            stream.use { it.write(buildAnkiTsv(words).toByteArray(Charsets.UTF_8)) }
+        }.onSuccess {
+            Toast.makeText(
+                this,
+                "已导出 ${words.size} 个词。拿去喂 Anki 吧，记得说是团长的功劳！",
+                Toast.LENGTH_LONG
+            ).show()
+        }.onFailure { throwable ->
+            Toast.makeText(this, "导出失败：${throwable.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun buildAnkiTsv(words: List<WordbookEntry>): String {
+        return buildString {
+            append("#separator:tab\n")
+            append("#html:false\n")
+            append("#columns:词面\t读音\t释义\t原句\n")
+            words.forEach { word ->
+                val meaning = buildString {
+                    if (word.jlptLevel.isNotBlank()) append("［${word.jlptLevel}］")
+                    append(word.meaning)
+                }
+                append(tsvField(word.surface)).append('\t')
+                append(tsvField(word.reading)).append('\t')
+                append(tsvField(meaning)).append('\t')
+                append(tsvField(word.sourceText)).append('\n')
+            }
+        }
+    }
+
+    private fun tsvField(value: String): String {
+        return value
+            .replace('\t', ' ')
+            .replace('\r', ' ')
+            .replace('\n', ' ')
+            .trim()
+    }
+
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    companion object {
+        private const val REQUEST_EXPORT_ANKI = 1001
     }
 }
