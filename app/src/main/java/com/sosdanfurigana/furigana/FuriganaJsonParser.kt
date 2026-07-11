@@ -246,9 +246,22 @@ object FuriganaJsonParser {
             return false
         }
         val following = originalText.substring(end.coerceIn(0, originalText.length))
-        if (surface.count { isKanji(it) } == 1) {
+        val kanjiCount = surface.count { isKanji(it) }
+        if (kanjiCount == 1) {
             VERB_PHRASE_SUFFIXES.forEach { suffix ->
                 if (reading.endsWith(suffix) && !following.startsWith(suffix)) {
+                    return false
+                }
+            }
+        } else if (kanjiCount > 1) {
+            // 多汉字词只查最不可能出现在名词读音结尾的动词后缀，
+            // 且去掉后缀后剩余读音仍需覆盖每个汉字（案内/靴下/虹鱒 这类词不受影响）。
+            MULTI_KANJI_VERB_SUFFIXES.forEach { suffix ->
+                if (reading.length > suffix.length &&
+                    reading.endsWith(suffix) &&
+                    !following.startsWith(suffix) &&
+                    reading.length - suffix.length >= kanjiCount
+                ) {
                     return false
                 }
             }
@@ -450,5 +463,9 @@ object FuriganaJsonParser {
         "って",
         "ない",
         "ます"
+    )
+    private val MULTI_KANJI_VERB_SUFFIXES = listOf(
+        "して",
+        "する"
     )
 }

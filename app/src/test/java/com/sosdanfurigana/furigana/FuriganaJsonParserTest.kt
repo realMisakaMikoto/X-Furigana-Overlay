@@ -121,6 +121,22 @@ class FuriganaJsonParserTest {
     }
 
     @Test
+    fun allowsNounReadingEndingWithVerbLikeKana() {
+        // 案内(あんない) 以「ない」结尾但不是动词活用，不许被多汉字后缀校验误杀
+        val source = "駅で案内を頼んだ"
+        val start = source.indexOf("案内")
+        val candidates = listOf(FuriganaCandidate(0, "案内", start, start + 2))
+
+        val annotations = FuriganaJsonParser.parseCandidateReadings(
+            originalText = source,
+            rawJson = """{"a":[[0,"あんない",0.95]]}""",
+            candidates = candidates
+        )
+
+        assertEquals(listOf(FuriganaAnnotation("案内", "あんない", start, start + 2, 0.95)), annotations)
+    }
+
+    @Test
     fun rejectsPreviousPhraseReadingBoundToSingleKanji() {
         val source = "少し怖い"
         val start = source.indexOf("怖")
