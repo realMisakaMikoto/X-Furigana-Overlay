@@ -1,12 +1,12 @@
 package com.sosdanfurigana.furigana
 
 /**
- * 语法作用荧光标注渲染：在注音 ruby 之上叠一层。
+ * 语法作用荧光标注渲染：在注音 ruby 之上叠一层，亮色主题（笔记详情页）。
  *
- * 每个词块 = 外层 <ruby>：底为该词的注音 HTML（内层 ruby 是振假名），
- * 外层 <rt> 是语法作用标签；词块整体铺该作用的荧光底色。
+ * 层级严格分离：每个词块是一个 inline-block，上行固定是语法作用标签，
+ * 下行是正文；正文里没有注音的文字也垫一层不可见的空白 rt，
+ * 保证「平假名一层、成分一层」在整行内高度一致，不会串行。
  * 「其他」不着色不标签，按普通注音渲染，避免满屏噪音。
- * 亮色主题（笔记详情页）。
  */
 object GrammarHtmlRenderer {
 
@@ -31,7 +31,7 @@ object GrammarHtmlRenderer {
                   background: transparent;
                   color: #201613;
                   font-size: 19px;
-                  line-height: 3.1;
+                  line-height: 2.1;
                   letter-spacing: 0.02em;
                   word-break: break-word;
                   font-family: sans-serif;
@@ -44,14 +44,26 @@ object GrammarHtmlRenderer {
                   color: #B25E00;
                   letter-spacing: 0;
                 }
-                ruby.tk {
-                  border-radius: 6px;
-                  padding: 1px 3px;
-                  margin: 0 2px;
+                rt.pad {
+                  visibility: hidden;
                 }
-                ruby.tk > rt.role {
+                .tk {
+                  display: inline-block;
+                  text-align: center;
+                  border-radius: 6px;
+                  padding: 1px 3px 2px 3px;
+                  margin: 2px 2px;
+                }
+                .tk .role {
+                  display: block;
                   font-size: 0.42em;
                   font-weight: bold;
+                  line-height: 1.7;
+                  letter-spacing: 0;
+                }
+                .tk .body {
+                  display: block;
+                  line-height: 2.0;
                 }
                 .legend {
                   margin-top: 20px;
@@ -89,40 +101,86 @@ object GrammarHtmlRenderer {
         orderedTokens.forEach { token ->
             if (token.start < cursor) return@forEach
             if (token.start > cursor) {
-                builder.append(renderRange(originalText, annotations, cursor, token.start))
+                builder.append(renderPlainRange(originalText, annotations, cursor, token.start))
             }
-            val inner = renderRange(originalText, annotations, token.start, token.end)
             val colors = GrammarRoles.ROLE_COLORS[token.role]
             if (colors == null) {
-                builder.append(inner)
+                builder.append(renderPlainRange(originalText, annotations, token.start, token.end))
             } else {
                 val (background, labelColor) = colors
-                builder.append("<ruby class=\"tk\" style=\"background:$background\">")
-                builder.append(inner)
-                builder.append("<rt class=\"role\" style=\"color:$labelColor\">")
+                builder.append("<span class=\"tk\" style=\"background:$background\">")
+                builder.append("<span class=\"role\" style=\"color:$labelColor\">")
                 builder.append(RubyHtmlRenderer.escapeText(token.role))
-                builder.append("</rt></ruby>")
+                builder.append("</span><span class=\"body\">")
+                builder.append(renderPaddedRange(originalText, annotations, token.start, token.end))
+                builder.append("</span></span>")
             }
             cursor = token.end
         }
         if (cursor < originalText.length) {
-            builder.append(renderRange(originalText, annotations, cursor, originalText.length))
+            builder.append(renderPlainRange(originalText, annotations, cursor, originalText.length))
         }
         return builder.toString()
     }
 
-    /** 渲染原文 [start, end) 区间：只带完全落在区间内的注音，偏移归零后复用 ruby 渲染。 */
-    private fun renderRange(
+    /** 词块外的文字：普通 ruby 渲染。 */
+    private fun renderPlainRange(
         originalText: String,
         annotations: List<FuriganaAnnotation>,
         start: Int,
         end: Int
     ): String {
         val slice = originalText.substring(start, end)
-        val shifted = annotations
+        val shifted = shiftedAnnotations(annotations, start, end)
+        return RubyHtmlRenderer.renderBodyHtml(slice, shifted)
+    }
+
+    /**
+     * 词块内的文字：没有注音的部分也垫一层空白 rt，
+     * 让整个词块的假名层高度一致，作用标签不会掉到假名那一行。
+     */
+    private fun renderPaddedRange(
+        originalText: String,
+        annotations: List<FuriganaAnnotation>,
+        start: Int,
+        end: Int
+    ): String {
+        val slice = originalText.substring(start, end)
+        val shifted = shiftedAnnotations(annotations, start, end)
+            .sortedBy { it.start }
+        val builder = StringBuilder()
+        var cursor = 0
+        shifted.forEach { annotation ->
+            if (annotation.start < cursor) return@forEach
+            if (annotation.start > cursor) {
+                builder.append(paddedRuby(slice.substring(cursor, annotation.start)))
+            }
+            builder.append("<ruby>")
+            builder.append(RubyHtmlRenderer.escapeText(slice.substring(annotation.start, annotation.end)))
+            builder.append("<rt>")
+            builder.append(RubyHtmlRenderer.escapeText(annotation.reading))
+            builder.append("</rt></ruby>")
+            cursor = annotation.end
+        }
+        if (cursor < slice.length) {
+            builder.append(paddedRuby(slice.substring(cursor)))
+        }
+        return builder.toString()
+    }
+
+    private fun paddedRuby(text: String): String {
+        if (text.isEmpty()) return ""
+        return "<ruby>${RubyHtmlRenderer.escapeText(text)}<rt class=\"pad\">&#160;</rt></ruby>"
+    }
+
+    private fun shiftedAnnotations(
+        annotations: List<FuriganaAnnotation>,
+        start: Int,
+        end: Int
+    ): List<FuriganaAnnotation> {
+        return annotations
             .filter { it.start >= start && it.end <= end }
             .map { it.copy(start = it.start - start, end = it.end - start) }
-        return RubyHtmlRenderer.renderBodyHtml(slice, shifted)
     }
 
     private fun legendHtml(): String {

@@ -35,6 +35,7 @@ import com.sosdanfurigana.accessibility.XTextAccessibilityService
 import com.sosdanfurigana.data.CurrentPostRepository
 import com.sosdanfurigana.data.DetectedPost
 import com.sosdanfurigana.data.FuriganaCache
+import com.sosdanfurigana.data.GrammarAnalysisFetcher
 import com.sosdanfurigana.data.NoteRepository
 import com.sosdanfurigana.data.SettingsRepository
 import com.sosdanfurigana.furigana.FuriganaClient
@@ -489,13 +490,14 @@ object OverlayController {
                 "result cache_hit clickToRenderMs=${SystemClock.elapsedRealtime() - clickedAt} " +
                     "webViewLoadMs=${SystemClock.elapsedRealtime() - renderStart}"
             )
-            NoteRepository(context).saveNote(
+            val cachedNoteId = NoteRepository(context).saveNote(
                 originalText = post.text,
                 rubyHtml = cached.rubyHtml,
                 plainText = cachedPlain,
                 modelName = settingsRepository.model,
                 annotationHintsJson = cached.annotationHintsJson
             )
+            GrammarAnalysisFetcher.autoAnalyze(context, cachedNoteId)
             copyButton.isEnabled = true
             wordButton.isEnabled = true
             wordButton.setOnClickListener {
@@ -523,13 +525,14 @@ object OverlayController {
                     val plain = RubyHtmlRenderer.renderPlainText(post.text, annotations)
                     val annotationHintsJson = FuriganaAnnotationCodec.encode(annotations)
                     cache.put(post.text, settingsRepository.model, html, plain, annotationHintsJson)
-                    NoteRepository(context).saveNote(
+                    val savedNoteId = NoteRepository(context).saveNote(
                         originalText = post.text,
                         rubyHtml = html,
                         plainText = plain,
                         modelName = settingsRepository.model,
                         annotationHintsJson = annotationHintsJson
                     )
+                    GrammarAnalysisFetcher.autoAnalyze(context, savedNoteId)
                     val renderStart = SystemClock.elapsedRealtime()
                     showHtml(webView, progress, html, plain)
                     XFuriganaPerf.d(

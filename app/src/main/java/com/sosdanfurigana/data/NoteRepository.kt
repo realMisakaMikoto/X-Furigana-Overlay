@@ -14,7 +14,7 @@ class NoteRepository(context: Context) {
         plainText: String,
         modelName: String,
         annotationHintsJson: String = ""
-    ) {
+    ): String {
         val notes = getNotes().toMutableList()
         val id = TextHash.sha256Short("$originalText\n$modelName")
         val now = System.currentTimeMillis()
@@ -38,6 +38,7 @@ class NoteRepository(context: Context) {
             notes.add(0, note)
         }
         writeNotes(notes.take(MAX_NOTES))
+        return id
     }
 
     fun getNote(id: String): FuriganaNote? {

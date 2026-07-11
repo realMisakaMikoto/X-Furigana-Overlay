@@ -32,6 +32,10 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
+    var autoGrammarAnalysis: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_GRAMMAR_ANALYSIS, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_GRAMMAR_ANALYSIS, value).apply()
+
     var targetPackages: List<String>
         get() {
             val raw = prefs.getString(KEY_TARGET_PACKAGES, DEFAULT_TARGET_PACKAGES.joinToString("\n"))
@@ -214,6 +218,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_API_PROFILES = "api_profiles"
         private const val KEY_SELECTED_API_PROFILE_ID = "selected_api_profile_id"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_AUTO_GRAMMAR_ANALYSIS = "auto_grammar_analysis"
         private const val KEY_TARGET_PACKAGES = "target_packages"
         private const val LEGACY_PROFILE_ID = "default"
 

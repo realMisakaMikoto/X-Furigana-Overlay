@@ -425,6 +425,24 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
+            <Switch
+                android:id="@+id/switch_auto_grammar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="保存笔记时自动分析语法"
+                android:textColor="@color/haruhi_ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="注音完顺手让模型拆好句子结构，点开笔记秒出。想省 token 就关掉，改为在笔记里手动点「语法分析」。"
+                android:textColor="@color/haruhi_muted"
+                android:textSize="12sp" />
+
             <Button
                 android:id="@+id/button_save_settings"
                 android:layout_width="match_parent"

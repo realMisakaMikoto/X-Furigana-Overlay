@@ -187,6 +187,15 @@ class NoteDetailActivity : Activity() {
             return
         }
         val current = note ?: return
+        // 后台自动分析可能已经完成，先看一眼缓存再决定要不要花这笔钱
+        repository.getNote(current.id)?.let { fresh ->
+            val cached = GrammarTokenCodec.decode(fresh.grammarJson)
+            if (cached.isNotEmpty()) {
+                grammarTokens = cached
+                renderGrammar()
+                return
+            }
+        }
         val client = GrammarAnalysisClient(applicationContext)
         if (!client.isConfigured()) {
             Toast.makeText(

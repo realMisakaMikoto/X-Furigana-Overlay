@@ -50,10 +50,21 @@ class GrammarAnalysisTest {
         val html = GrammarHtmlRenderer.renderHtml(source, emptyList(), tokens)
 
         assertTrue(html.contains("class=\"tk\""))
-        assertTrue(html.contains(">主题</rt>"))
-        assertTrue(html.contains(">系动词</rt>"))
+        assertTrue(html.contains(">主题</span>"))
+        assertTrue(html.contains(">系动词</span>"))
         assertTrue(html.contains("class=\"legend\""))
         assertTrue(html.contains("#FFE08A"))
+    }
+
+    @Test
+    fun `kana only token still reserves the furigana layer`() {
+        // これ 没有注音，也要垫空白 rt，保证假名一层、成分一层不串行
+        val source = "これはペンです"
+        val tokens = listOf(GrammarToken("これ", "主题", 0, 2))
+        val html = GrammarHtmlRenderer.renderHtml(source, emptyList(), tokens)
+
+        assertTrue(html.contains("<rt class=\"pad\">"))
+        assertTrue(html.contains("class=\"role\""))
     }
 
     @Test
@@ -74,7 +85,7 @@ class GrammarAnalysisTest {
         val html = GrammarHtmlRenderer.renderHtml(source, annotations, tokens)
 
         assertTrue(html.contains("<rt>かんさつ</rt>"))
-        assertTrue(html.contains(">谓语</rt>"))
+        assertTrue(html.contains(">谓语</span>"))
     }
 
     @Test

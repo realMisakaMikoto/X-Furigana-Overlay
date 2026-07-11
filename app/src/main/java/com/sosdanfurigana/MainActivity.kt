@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var model: EditText
     private lateinit var targetPackages: EditText
     private lateinit var enabledSwitch: Switch
+    private lateinit var autoGrammarSwitch: Switch
     private lateinit var deleteApiProfileButton: Button
     private lateinit var haruhiImage: ImageView
     private var apiProfiles: List<ApiProfile> = emptyList()
@@ -72,6 +73,7 @@ class MainActivity : Activity() {
         model = findViewById(R.id.edit_model)
         targetPackages = findViewById(R.id.edit_target_packages)
         enabledSwitch = findViewById(R.id.switch_enabled)
+        autoGrammarSwitch = findViewById(R.id.switch_auto_grammar)
         deleteApiProfileButton = findViewById(R.id.button_delete_api_profile)
         haruhiImage = findViewById(R.id.image_haruhi)
     }
@@ -176,6 +178,7 @@ class MainActivity : Activity() {
         loadSelectedApiProfileIntoUi()
         targetPackages.setText(settingsRepository.targetPackages.joinToString("\n"))
         enabledSwitch.isChecked = settingsRepository.enabled
+        autoGrammarSwitch.isChecked = settingsRepository.autoGrammarAnalysis
     }
 
     private fun bindActions() {
@@ -253,6 +256,15 @@ class MainActivity : Activity() {
             if (Settings.canDrawOverlays(this)) {
                 OverlayController.showButton(applicationContext)
             }
+        }
+
+        autoGrammarSwitch.setOnCheckedChangeListener { _, checked ->
+            settingsRepository.autoGrammarAnalysis = checked
+            Toast.makeText(
+                this,
+                if (checked) "好，注音完团长顺手把句子也拆了" else "行吧，省着点用，语法改成手动点",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         findViewById<Button>(R.id.button_show_overlay).setOnClickListener {
