@@ -224,6 +224,51 @@ class WordbookActivity : Activity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setPadding(0, dp(2), 0, 0)
             })
+            if (word.meaning.isNotBlank()) {
+                addView(
+                    LinearLayout(this@WordbookActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(8), 0, 0)
+                        if (word.jlptLevel.isNotBlank()) {
+                            addView(
+                                TextView(this@WordbookActivity).apply {
+                                    text = word.jlptLevel
+                                    textSize = 10f
+                                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                    setTextColor(AppUi.HAIR)
+                                    background = AppUi.rounded(
+                                        this@WordbookActivity,
+                                        AppUi.HEADBAND_SOFT,
+                                        999,
+                                        AppUi.HEADBAND_DEEP
+                                    )
+                                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                                },
+                                LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    marginEnd = dp(8)
+                                }
+                            )
+                        }
+                        addView(
+                            TextView(this@WordbookActivity).apply {
+                                text = word.meaning
+                                textSize = 13f
+                                setTextColor(AppUi.INK)
+                                setLineSpacing(dp(2).toFloat(), 1f)
+                            },
+                            LinearLayout.LayoutParams(
+                                0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                1f
+                            )
+                        )
+                    }
+                )
+            }
             addView(TextView(this@WordbookActivity).apply {
                 text = word.sourceText
                 textSize = 13f
@@ -244,6 +289,31 @@ class WordbookActivity : Activity() {
                         },
                         LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     )
+                    if (word.meaning.isBlank()) {
+                        addView(
+                            Button(this@WordbookActivity).apply {
+                                text = "查释义"
+                                AppUi.ghost(this)
+                                textSize = 12f
+                                setOnClickListener {
+                                    isEnabled = false
+                                    com.sosdanfurigana.data.WordMeaningFetcher
+                                        .fetchIfMissing(applicationContext, word.id)
+                                    Toast.makeText(
+                                        this@WordbookActivity,
+                                        "已经派模型去查了，过几秒再回来看",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                marginEnd = dp(8)
+                            }
+                        )
+                    }
                     addView(
                         Button(this@WordbookActivity).apply {
                             text = "删除"

@@ -318,8 +318,11 @@ class AddWordActivity : Activity() {
             Toast.makeText(this, "请填写读音", Toast.LENGTH_SHORT).show()
             return
         }
-        repository.saveWord(surface, reading, source)
-        Toast.makeText(this, "已加入单词本", Toast.LENGTH_SHORT).show()
+        val wordId = repository.saveWord(surface, reading, source)
+        if (wordId != null) {
+            com.sosdanfurigana.data.WordMeaningFetcher.fetchIfMissing(applicationContext, wordId)
+        }
+        Toast.makeText(this, "已加入单词本，团长顺手派模型去查释义了", Toast.LENGTH_SHORT).show()
         finish()
     }
 
