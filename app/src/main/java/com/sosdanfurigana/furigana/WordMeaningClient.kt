@@ -25,7 +25,8 @@ class WordMeaningClient(context: Context) {
 
     data class WordMeaning(
         val meaning: String,
-        val jlptLevel: String
+        val jlptLevel: String,
+        val partOfSpeech: String
     )
 
     suspend fun requestMeaning(
@@ -70,7 +71,9 @@ class WordMeaningClient(context: Context) {
         val systemPrompt =
             "你是日语词汇助手。用户给出一个日语词、它的读音和出现的原句。" +
                 "返回一个 JSON 对象：" +
-                "{\"meaning\":\"简体中文释义，简短（30字以内），可含词性\"," +
+                "{\"meaning\":\"简体中文释义，简短（30字以内）\"," +
+                "\"pos\":\"该词的词性，用中文，从这些里选：名词/代词/数词/动词/形容词/形容动词/" +
+                "副词/连体词/接续词/助词/助动词/感叹词；没有把握就返回空字符串\"," +
                 "\"jlpt\":\"该词大致的 JLPT 等级，N5/N4/N3/N2/N1 之一；没有把握就返回空字符串\"}。" +
                 "只返回 JSON，不要输出其他内容。"
         val userPrompt = buildString {
@@ -102,7 +105,19 @@ class WordMeaningClient(context: Context) {
         if (meaning.isBlank()) throw JSONException("释义为空")
         val jlptRaw = json.optString("jlpt").trim().uppercase()
         val jlpt = if (jlptRaw in VALID_JLPT_LEVELS) jlptRaw else ""
-        return WordMeaning(meaning = meaning, jlptLevel = jlpt)
+        return WordMeaning(
+            meaning = meaning,
+            jlptLevel = jlpt,
+            partOfSpeech = normalizePartOfSpeech(json.optString("pos"))
+        )
+    }
+
+    private fun normalizePartOfSpeech(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return ""
+        if (trimmed in VALID_PART_OF_SPEECH) return trimmed
+        // 模型可能返回「他动词」「ナ形容词」这类变体，取白名单里能对上的那个
+        return VALID_PART_OF_SPEECH.firstOrNull { trimmed.contains(it) }.orEmpty()
     }
 
     private fun executeChatCompletion(endpoint: String, apiKey: String, payload: String): String {
@@ -142,6 +157,22 @@ class WordMeaningClient(context: Context) {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val MAX_MEANING_LENGTH = 80
         private val VALID_JLPT_LEVELS = setOf("N1", "N2", "N3", "N4", "N5")
+
+        // 注意顺序：形容动词要排在形容词、动词之前，避免 contains 误匹配
+        private val VALID_PART_OF_SPEECH = listOf(
+            "形容动词",
+            "形容词",
+            "助动词",
+            "连体词",
+            "接续词",
+            "感叹词",
+            "名词",
+            "代词",
+            "数词",
+            "动词",
+            "副词",
+            "助词"
+        )
         private val HTTP_CLIENT = OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

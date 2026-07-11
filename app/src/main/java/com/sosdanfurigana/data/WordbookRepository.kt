@@ -27,6 +27,7 @@ class WordbookRepository(context: Context) {
             updatedAt = now,
             meaning = existing?.meaning.orEmpty(),
             jlptLevel = existing?.jlptLevel.orEmpty(),
+            partOfSpeech = existing?.partOfSpeech.orEmpty(),
             dueAt = existing?.dueAt ?: 0L,
             streak = existing?.streak ?: 0,
             reviewCount = existing?.reviewCount ?: 0
@@ -75,6 +76,7 @@ class WordbookRepository(context: Context) {
                             updatedAt = json.optLong("updatedAt"),
                             meaning = json.optString("meaning"),
                             jlptLevel = json.optString("jlptLevel"),
+                            partOfSpeech = json.optString("partOfSpeech"),
                             // 老数据没有 dueAt，默认 0 = 立即到期，进入复习队列
                             dueAt = json.optLong("dueAt", 0L),
                             streak = json.optInt("streak", 0),
@@ -108,6 +110,7 @@ class WordbookRepository(context: Context) {
                     .put("updatedAt", word.updatedAt)
                     .put("meaning", word.meaning)
                     .put("jlptLevel", word.jlptLevel)
+                    .put("partOfSpeech", word.partOfSpeech)
                     .put("dueAt", word.dueAt)
                     .put("streak", word.streak)
                     .put("reviewCount", word.reviewCount)
@@ -132,6 +135,7 @@ data class WordbookEntry(
     val updatedAt: Long,
     val meaning: String = "",
     val jlptLevel: String = "",
+    val partOfSpeech: String = "",
     val dueAt: Long = 0L,
     val streak: Int = 0,
     val reviewCount: Int = 0

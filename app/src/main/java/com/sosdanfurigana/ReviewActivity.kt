@@ -177,10 +177,15 @@ class ReviewActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
         })
-        if (entry.meaning.isNotBlank() || entry.jlptLevel.isNotBlank()) {
+        if (entry.meaning.isNotBlank() || entry.jlptLevel.isNotBlank() ||
+            entry.partOfSpeech.isNotBlank()
+        ) {
             card.addView(TextView(this).apply {
-                val jlpt = if (entry.jlptLevel.isNotBlank()) "［${entry.jlptLevel}］" else ""
-                text = "$jlpt${entry.meaning}".trim()
+                val tags = listOf(entry.jlptLevel, entry.partOfSpeech)
+                    .filter { it.isNotBlank() }
+                    .joinToString("·")
+                val prefix = if (tags.isNotBlank()) "［$tags］" else ""
+                text = "$prefix${entry.meaning}".trim()
                 textSize = 14f
                 setTextColor(AppUi.INK)
                 gravity = Gravity.CENTER

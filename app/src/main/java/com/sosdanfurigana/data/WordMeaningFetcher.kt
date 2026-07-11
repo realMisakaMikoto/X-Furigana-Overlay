@@ -36,7 +36,8 @@ object WordMeaningFetcher {
                             repository.updateWord(
                                 current.copy(
                                     meaning = meaning.meaning,
-                                    jlptLevel = meaning.jlptLevel
+                                    jlptLevel = meaning.jlptLevel,
+                                    partOfSpeech = meaning.partOfSpeech
                                 )
                             )
                         }

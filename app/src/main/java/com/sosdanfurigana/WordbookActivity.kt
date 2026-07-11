@@ -238,7 +238,9 @@ class WordbookActivity : Activity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setPadding(0, dp(2), 0, 0)
             })
-            if (word.meaning.isNotBlank()) {
+            if (word.meaning.isNotBlank() || word.jlptLevel.isNotBlank() ||
+                word.partOfSpeech.isNotBlank()
+            ) {
                 addView(
                     LinearLayout(this@WordbookActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -256,6 +258,29 @@ class WordbookActivity : Activity() {
                                         AppUi.HEADBAND_SOFT,
                                         999,
                                         AppUi.HEADBAND_DEEP
+                                    )
+                                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                                },
+                                LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                ).apply {
+                                    marginEnd = dp(8)
+                                }
+                            )
+                        }
+                        if (word.partOfSpeech.isNotBlank()) {
+                            addView(
+                                TextView(this@WordbookActivity).apply {
+                                    text = word.partOfSpeech
+                                    textSize = 10f
+                                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                    setTextColor(AppUi.HAIR)
+                                    background = AppUi.rounded(
+                                        this@WordbookActivity,
+                                        AppUi.SURFACE_TINT,
+                                        999,
+                                        AppUi.STROKE_STRONG
                                     )
                                     setPadding(dp(8), dp(3), dp(8), dp(3))
                                 },
