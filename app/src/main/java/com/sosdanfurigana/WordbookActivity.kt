@@ -1,6 +1,7 @@
 package com.sosdanfurigana
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -12,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.sosdanfurigana.data.ReviewScheduler
 import com.sosdanfurigana.data.WordbookEntry
 import com.sosdanfurigana.data.WordbookRepository
 import com.sosdanfurigana.japanese.JapaneseSearch
@@ -22,6 +24,7 @@ import java.util.Locale
 class WordbookActivity : Activity() {
     private lateinit var repository: WordbookRepository
     private lateinit var list: LinearLayout
+    private lateinit var dueText: TextView
     private var searchQuery = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,6 +32,21 @@ class WordbookActivity : Activity() {
         repository = WordbookRepository(applicationContext)
         setContentView(createContentView())
         renderWords()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshDueText()
+        renderWords()
+    }
+
+    private fun refreshDueText() {
+        val dueCount = ReviewScheduler.dueCount(repository.getWords())
+        dueText.text = if (dueCount > 0) {
+            "今天有 $dueCount 个词排队等你复习，别想装没看见。"
+        } else {
+            "今天没有该复习的词，团长准你休息。"
+        }
     }
 
     private fun createContentView(): View {
@@ -64,21 +82,60 @@ class WordbookActivity : Activity() {
                     )
                 )
                 addView(TextView(this@WordbookActivity).apply {
-                    text = "把真正想记住的词收进这里。团长不负责替你背。"
+                    text = "把真正想记住的词收进这里。团长不负责替你背，但会盯着你复习。"
                     textSize = 13f
                     setTextColor(AppUi.WARM_WHITE)
                     setLineSpacing(dp(3).toFloat(), 1f)
-                    setPadding(0, dp(6), 0, dp(14))
+                    setPadding(0, dp(6), 0, dp(10))
                 })
-                addView(Button(this@WordbookActivity).apply {
-                    text = "清空单词本"
-                    AppUi.secondary(this)
-                    setOnClickListener {
-                        repository.clear()
-                        renderWords()
-                        Toast.makeText(this@WordbookActivity, "已清空单词本", Toast.LENGTH_SHORT).show()
+                dueText = TextView(this@WordbookActivity).apply {
+                    textSize = 13f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(AppUi.CREAM)
+                    setPadding(0, 0, 0, dp(12))
+                }
+                addView(dueText)
+                refreshDueText()
+                addView(
+                    LinearLayout(this@WordbookActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        addView(
+                            Button(this@WordbookActivity).apply {
+                                text = "开始复习"
+                                AppUi.secondary(this)
+                                setOnClickListener {
+                                    startActivity(
+                                        Intent(this@WordbookActivity, ReviewActivity::class.java)
+                                    )
+                                }
+                            },
+                            LinearLayout.LayoutParams(0, dp(44), 1f)
+                        )
+                        addView(
+                            Button(this@WordbookActivity).apply {
+                                text = "清空单词本"
+                                AppUi.danger(this)
+                                textSize = 12f
+                                setOnClickListener {
+                                    repository.clear()
+                                    refreshDueText()
+                                    renderWords()
+                                    Toast.makeText(
+                                        this@WordbookActivity,
+                                        "已清空单词本",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                dp(44)
+                            ).apply {
+                                marginStart = dp(8)
+                            }
+                        )
                     }
-                })
+                )
             }
         )
 
@@ -181,7 +238,7 @@ class WordbookActivity : Activity() {
                     setPadding(0, dp(10), 0, 0)
                     addView(
                         TextView(this@WordbookActivity).apply {
-                            text = formatTime(word.updatedAt)
+                            text = "${formatTime(word.updatedAt)} · ${dueLabel(word)}"
                             textSize = 11f
                             setTextColor(AppUi.HAIR_SOFT)
                         },
@@ -237,6 +294,14 @@ class WordbookActivity : Activity() {
     private fun formatTime(timeMillis: Long): String {
         if (timeMillis <= 0L) return ""
         return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timeMillis))
+    }
+
+    private fun dueLabel(word: WordbookEntry): String {
+        return if (word.dueAt <= System.currentTimeMillis()) {
+            "该复习了"
+        } else {
+            "下次复习 " + SimpleDateFormat("MM.dd", Locale.getDefault()).format(Date(word.dueAt))
+        }
     }
 
     private fun dp(value: Int): Int {

@@ -31,6 +31,9 @@
         <activity
             android:name=".AddWordActivity"
             android:exported="false" />
+        <activity
+            android:name=".ReviewActivity"
+            android:exported="false" />
 
         <service
             android:name=".accessibility.XTextAccessibilityService"

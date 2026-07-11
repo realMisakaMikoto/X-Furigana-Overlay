@@ -8,22 +8,28 @@ import org.json.JSONObject
 class WordbookRepository(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun saveWord(surface: String, reading: String, sourceText: String) {
+    fun saveWord(surface: String, reading: String, sourceText: String): String? {
         val normalizedSurface = surface.trim()
         val normalizedReading = reading.trim()
-        if (normalizedSurface.isBlank() || normalizedReading.isBlank()) return
+        if (normalizedSurface.isBlank() || normalizedReading.isBlank()) return null
 
         val words = getWords().toMutableList()
         val id = TextHash.sha256Short("$normalizedSurface\n$normalizedReading")
         val now = System.currentTimeMillis()
         val existingIndex = words.indexOfFirst { it.id == id }
+        val existing = if (existingIndex >= 0) words[existingIndex] else null
         val word = WordbookEntry(
             id = id,
             surface = normalizedSurface,
             reading = normalizedReading,
             sourceText = sourceText,
-            createdAt = if (existingIndex >= 0) words[existingIndex].createdAt else now,
-            updatedAt = now
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now,
+            meaning = existing?.meaning.orEmpty(),
+            jlptLevel = existing?.jlptLevel.orEmpty(),
+            dueAt = existing?.dueAt ?: 0L,
+            streak = existing?.streak ?: 0,
+            reviewCount = existing?.reviewCount ?: 0
         )
         if (existingIndex >= 0) {
             words[existingIndex] = word
@@ -31,6 +37,25 @@ class WordbookRepository(context: Context) {
             words.add(0, word)
         }
         writeWords(words.take(MAX_WORDS))
+        return id
+    }
+
+    fun getWord(id: String): WordbookEntry? {
+        return getWords().firstOrNull { it.id == id }
+    }
+
+    fun updateWord(entry: WordbookEntry) {
+        val words = getWords().toMutableList()
+        val index = words.indexOfFirst { it.id == entry.id }
+        if (index < 0) return
+        words[index] = entry
+        writeWords(words)
+    }
+
+    fun dueWords(now: Long = System.currentTimeMillis()): List<WordbookEntry> {
+        return getWords()
+            .filter { it.dueAt <= now }
+            .sortedBy { it.dueAt }
     }
 
     fun getWords(): List<WordbookEntry> {
@@ -47,7 +72,13 @@ class WordbookRepository(context: Context) {
                             reading = json.optString("reading"),
                             sourceText = json.optString("sourceText"),
                             createdAt = json.optLong("createdAt"),
-                            updatedAt = json.optLong("updatedAt")
+                            updatedAt = json.optLong("updatedAt"),
+                            meaning = json.optString("meaning"),
+                            jlptLevel = json.optString("jlptLevel"),
+                            // 老数据没有 dueAt，默认 0 = 立即到期，进入复习队列
+                            dueAt = json.optLong("dueAt", 0L),
+                            streak = json.optInt("streak", 0),
+                            reviewCount = json.optInt("reviewCount", 0)
                         )
                     )
                 }
@@ -75,6 +106,11 @@ class WordbookRepository(context: Context) {
                     .put("sourceText", word.sourceText)
                     .put("createdAt", word.createdAt)
                     .put("updatedAt", word.updatedAt)
+                    .put("meaning", word.meaning)
+                    .put("jlptLevel", word.jlptLevel)
+                    .put("dueAt", word.dueAt)
+                    .put("streak", word.streak)
+                    .put("reviewCount", word.reviewCount)
             )
         }
         prefs.edit().putString(KEY_WORDS, array.toString()).apply()
@@ -93,5 +129,10 @@ data class WordbookEntry(
     val reading: String,
     val sourceText: String,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val meaning: String = "",
+    val jlptLevel: String = "",
+    val dueAt: Long = 0L,
+    val streak: Int = 0,
+    val reviewCount: Int = 0
 )
