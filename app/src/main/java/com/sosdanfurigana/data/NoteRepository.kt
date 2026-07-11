@@ -19,6 +19,7 @@ class NoteRepository(context: Context) {
         val id = TextHash.sha256Short("$originalText\n$modelName")
         val now = System.currentTimeMillis()
         val existingIndex = notes.indexOfFirst { it.id == id }
+        val existing = if (existingIndex >= 0) notes[existingIndex] else null
         val note = FuriganaNote(
             id = id,
             originalText = originalText,
@@ -26,7 +27,9 @@ class NoteRepository(context: Context) {
             plainText = plainText,
             modelName = modelName,
             annotationHintsJson = annotationHintsJson,
-            createdAt = if (existingIndex >= 0) notes[existingIndex].createdAt else now,
+            // 同一条原文重新注音时保留已有的语法分析缓存（分析基于原文，仍然有效）
+            grammarJson = existing?.grammarJson.orEmpty(),
+            createdAt = existing?.createdAt ?: now,
             updatedAt = now
         )
         if (existingIndex >= 0) {
@@ -35,6 +38,18 @@ class NoteRepository(context: Context) {
             notes.add(0, note)
         }
         writeNotes(notes.take(MAX_NOTES))
+    }
+
+    fun getNote(id: String): FuriganaNote? {
+        return getNotes().firstOrNull { it.id == id }
+    }
+
+    fun updateGrammar(id: String, grammarJson: String) {
+        val notes = getNotes().toMutableList()
+        val index = notes.indexOfFirst { it.id == id }
+        if (index < 0) return
+        notes[index] = notes[index].copy(grammarJson = grammarJson)
+        writeNotes(notes)
     }
 
     fun getNotes(): List<FuriganaNote> {
@@ -52,6 +67,7 @@ class NoteRepository(context: Context) {
                             plainText = json.optString("plainText"),
                             modelName = json.optString("modelName"),
                             annotationHintsJson = json.optString("annotationHintsJson"),
+                            grammarJson = json.optString("grammarJson"),
                             createdAt = json.optLong("createdAt"),
                             updatedAt = json.optLong("updatedAt")
                         )
@@ -81,6 +97,7 @@ class NoteRepository(context: Context) {
                     .put("plainText", note.plainText)
                     .put("modelName", note.modelName)
                     .put("annotationHintsJson", note.annotationHintsJson)
+                    .put("grammarJson", note.grammarJson)
                     .put("createdAt", note.createdAt)
                     .put("updatedAt", note.updatedAt)
             )
@@ -102,6 +119,7 @@ data class FuriganaNote(
     val plainText: String,
     val modelName: String,
     val annotationHintsJson: String,
+    val grammarJson: String = "",
     val createdAt: Long,
     val updatedAt: Long
 )

@@ -5,7 +5,17 @@ import kotlin.math.max
 import kotlin.math.min
 
 object RubyHtmlRenderer {
-    fun renderHtml(originalText: String, annotations: List<FuriganaAnnotation>): String {
+
+    enum class Theme(val textColor: String, val rubyColor: String) {
+        DARK(textColor = "#F6EBE0", rubyColor = "#FFD44D"),
+        LIGHT(textColor = "#201613", rubyColor = "#B25E00")
+    }
+
+    fun renderHtml(
+        originalText: String,
+        annotations: List<FuriganaAnnotation>,
+        theme: Theme = Theme.DARK
+    ): String {
         val body = renderBody(originalText, annotations)
         return """
             <!doctype html>
@@ -20,7 +30,7 @@ object RubyHtmlRenderer {
                   margin: 0;
                   padding: 14px 12px;
                   background: transparent;
-                  color: #F6EBE0;
+                  color: ${theme.textColor};
                   font-size: 19px;
                   line-height: 2.3;
                   letter-spacing: 0.02em;
@@ -32,7 +42,7 @@ object RubyHtmlRenderer {
                 }
                 rt {
                   font-size: 0.5em;
-                  color: #FFD44D;
+                  color: ${theme.rubyColor};
                   letter-spacing: 0;
                 }
               </style>
@@ -40,6 +50,15 @@ object RubyHtmlRenderer {
             <body>$body</body>
             </html>
         """.trimIndent()
+    }
+
+    /** 渲染一段文本的 ruby HTML 片段（不含 html/body 外壳），供语法标注渲染按词块复用。 */
+    fun renderBodyHtml(originalText: String, annotations: List<FuriganaAnnotation>): String {
+        return renderBody(originalText, annotations)
+    }
+
+    fun escapeText(text: String): String {
+        return escapeHtml(text)
     }
 
     fun renderPlainText(originalText: String, annotations: List<FuriganaAnnotation>): String {

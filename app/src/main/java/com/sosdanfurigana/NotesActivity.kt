@@ -345,8 +345,18 @@ class NotesActivity : Activity() {
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = AppUi.sectionBackground(this@NotesActivity)
             elevation = dp(1).toFloat()
+            foreground = AppUi.ripple(
+                AppUi.rounded(this@NotesActivity, android.graphics.Color.TRANSPARENT, 20),
+                0x294CAACD
+            )
+            setOnClickListener {
+                startActivity(
+                    Intent(this@NotesActivity, NoteDetailActivity::class.java)
+                        .putExtra(NoteDetailActivity.EXTRA_NOTE_ID, note.id)
+                )
+            }
             addView(TextView(this@NotesActivity).apply {
-                text = formatTime(note.updatedAt)
+                text = "${formatTime(note.updatedAt)} · 点开看注音和句子结构"
                 textSize = 11f
                 setTextColor(AppUi.HAIR_SOFT)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
