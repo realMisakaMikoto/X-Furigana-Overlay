@@ -11,6 +11,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -43,9 +44,14 @@ class NotesActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppMotion.prepareTabActivity(this, savedInstanceState)
         repository = NoteRepository(applicationContext)
         wordbookRepository = WordbookRepository(applicationContext)
-        setContentView(createContentView())
+        setContentView(
+            AppBottomNavigation.wrap(this, createContentView(), BottomDestination.NOTES).also {
+                AppMotion.bindContainerTarget(this, it)
+            }
+        )
         refreshReadingPairs()
         renderNotes()
     }
@@ -59,45 +65,53 @@ class NotesActivity : Activity() {
 
         root.addView(
             LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(18), dp(18), dp(18), dp(18))
                 background = AppUi.heroBackground(this@NotesActivity)
                 elevation = dp(3).toFloat()
                 addView(
-                    View(this@NotesActivity).apply {
-                        background = AppUi.headbandRule(this@NotesActivity)
+                    LinearLayout(this@NotesActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(
+                            View(this@NotesActivity).apply {
+                                background = AppUi.headbandRule(this@NotesActivity)
+                            },
+                            LinearLayout.LayoutParams(dp(86), dp(5))
+                        )
+                        addView(TextView(this@NotesActivity).apply {
+                            text = "搜查记录"
+                            textSize = 24f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            setTextColor(AppUi.CREAM)
+                            setPadding(0, dp(12), 0, 0)
+                        })
+                        addView(TextView(this@NotesActivity).apply {
+                            text = "注音结果会自动归档，句子结构和选词任务也从这里继续。"
+                            textSize = 13f
+                            setTextColor(AppUi.WARM_WHITE)
+                            setLineSpacing(dp(3).toFloat(), 1f)
+                            setPadding(0, dp(6), 0, dp(12))
+                        })
+                        addView(Button(this@NotesActivity).apply {
+                            text = "清空笔记"
+                            AppUi.secondary(this)
+                            setOnClickListener {
+                                repository.clear()
+                                corpusCache.clear()
+                                renderNotes()
+                                Toast.makeText(this@NotesActivity, "已清空笔记", Toast.LENGTH_SHORT).show()
+                            }
+                        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
                     },
-                    LinearLayout.LayoutParams(dp(86), dp(5))
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 )
-                addView(
-                    TextView(this@NotesActivity).apply {
-                        text = "笔记"
-                        textSize = 24f
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        setTextColor(AppUi.CREAM)
-                        setPadding(0, dp(14), 0, 0)
-                    },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                )
-                addView(TextView(this@NotesActivity).apply {
-                    text = "自动保存注音过的 post，之后可以继续分词加词。"
-                    textSize = 13f
-                    setTextColor(AppUi.WARM_WHITE)
-                    setLineSpacing(dp(3).toFloat(), 1f)
-                    setPadding(0, dp(6), 0, dp(14))
-                })
-                addView(Button(this@NotesActivity).apply {
-                    text = "清空笔记"
-                    AppUi.secondary(this)
-                    setOnClickListener {
-                        repository.clear()
-                        corpusCache.clear()
-                        renderNotes()
-                        Toast.makeText(this@NotesActivity, "已清空笔记", Toast.LENGTH_SHORT).show()
-                    }
+                addView(ImageView(this@NotesActivity).apply {
+                    setImageResource(R.drawable.haruhi_clap)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "团长确认搜查记录"
+                }, LinearLayout.LayoutParams(dp(82), dp(104)).apply {
+                    marginStart = dp(12)
                 })
             },
             LinearLayout.LayoutParams(
@@ -320,7 +334,7 @@ class NotesActivity : Activity() {
         list.removeAllViews()
         val notes = repository.getNotes()
         if (notes.isEmpty()) {
-            list.addView(emptyText("暂无笔记。成功注音的 post 会自动保存在这里。"))
+            list.addView(emptyText("暂无笔记。成功注音的内容会自动保存在这里。"))
             return
         }
         val queryVariants = JapaneseSearch.expandQuery(searchQuery, readingPairs)
@@ -350,13 +364,15 @@ class NotesActivity : Activity() {
                 0x294CAACD
             )
             setOnClickListener {
-                startActivity(
+                AppMotion.startContainer(
+                    this@NotesActivity,
+                    this,
                     Intent(this@NotesActivity, NoteDetailActivity::class.java)
                         .putExtra(NoteDetailActivity.EXTRA_NOTE_ID, note.id)
                 )
             }
             addView(TextView(this@NotesActivity).apply {
-                text = "${formatTime(note.updatedAt)} · 点开看注音和句子结构"
+                text = "${formatTime(note.updatedAt)} · 点开查看注音，可分析句子结构"
                 textSize = 11f
                 setTextColor(AppUi.HAIR_SOFT)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -381,9 +397,9 @@ class NotesActivity : Activity() {
                     setPadding(0, dp(10), 0, 0)
                     addView(
                         Button(this@NotesActivity).apply {
-                            text = "分词/加词"
+                            text = "选词/加词"
                             AppUi.primary(this)
-                            setOnClickListener { openAddWord(note) }
+                            setOnClickListener { openAddWord(note, this) }
                         },
                         LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     )
@@ -416,7 +432,7 @@ class NotesActivity : Activity() {
         }
     }
 
-    private fun openAddWord(note: FuriganaNote) {
+    private fun openAddWord(note: FuriganaNote, source: View) {
         val hints = JSONArray()
         val annotations = decodeAnnotations(note)
         annotations
@@ -429,7 +445,9 @@ class NotesActivity : Activity() {
                         .put("e", annotation.end)
                 )
             }
-        startActivity(
+        AppMotion.startContainer(
+            this,
+            source,
             Intent(this, AddWordActivity::class.java)
                 .putExtra(AddWordActivity.EXTRA_SOURCE_TEXT, note.originalText)
                 .putExtra(AddWordActivity.EXTRA_READING_HINTS, hints.toString())

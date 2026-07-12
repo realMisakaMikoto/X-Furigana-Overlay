@@ -8,345 +8,133 @@ import android.content.Intent
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.os.Build
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.ImageView
-import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import com.sosdanfurigana.data.ApiProfile
-import com.sosdanfurigana.data.SettingsRepository
+import com.sosdanfurigana.data.NoteRepository
+import com.sosdanfurigana.data.WordbookRepository
 import com.sosdanfurigana.overlay.OverlayController
 import kotlin.random.Random
 
 class MainActivity : Activity() {
-    private lateinit var settingsRepository: SettingsRepository
+    private lateinit var noteRepository: NoteRepository
+    private lateinit var wordbookRepository: WordbookRepository
     private lateinit var accessibilityStatus: TextView
     private lateinit var overlayStatus: TextView
-    private lateinit var apiProfileSpinner: Spinner
-    private lateinit var apiProfileName: EditText
-    private lateinit var apiBaseUrl: EditText
-    private lateinit var apiKey: EditText
-    private lateinit var model: EditText
-    private lateinit var targetPackages: EditText
-    private lateinit var enabledSwitch: Switch
-    private lateinit var autoGrammarSwitch: Switch
-    private lateinit var deleteApiProfileButton: Button
+    private lateinit var missionStatus: TextView
+    private lateinit var dueCount: TextView
+    private lateinit var noteCount: TextView
+    private lateinit var wordCount: TextView
+    private lateinit var reviewButton: Button
     private lateinit var haruhiImage: ImageView
-    private var apiProfiles: List<ApiProfile> = emptyList()
-    private var suppressProfileSelection = false
     private val haruhiTapTimestamps = ArrayDeque<Long>()
     private var currentHaruhiGifIndex = 0
     private var lastHaruhiScoldAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        val content = layoutInflater.inflate(R.layout.activity_main, null, false)
+        setContentView(AppBottomNavigation.wrap(this, content, BottomDestination.HOME))
 
-        settingsRepository = SettingsRepository(applicationContext)
-        bindViews()
+        noteRepository = NoteRepository(applicationContext)
+        wordbookRepository = WordbookRepository(applicationContext)
+        bindViews(content)
         startHeroGifIfSupported()
-        loadSettingsIntoUi()
-        bindActions()
+        bindActions(content)
     }
 
     override fun onResume() {
         super.onResume()
-        updatePermissionStatus()
+        updateDashboard()
     }
 
-    private fun bindViews() {
-        accessibilityStatus = findViewById(R.id.text_accessibility_status)
-        overlayStatus = findViewById(R.id.text_overlay_status)
-        apiProfileSpinner = findViewById(R.id.spinner_api_profiles)
-        apiProfileName = findViewById(R.id.edit_api_profile_name)
-        apiBaseUrl = findViewById(R.id.edit_api_base_url)
-        apiKey = findViewById(R.id.edit_api_key)
-        model = findViewById(R.id.edit_model)
-        targetPackages = findViewById(R.id.edit_target_packages)
-        enabledSwitch = findViewById(R.id.switch_enabled)
-        autoGrammarSwitch = findViewById(R.id.switch_auto_grammar)
-        deleteApiProfileButton = findViewById(R.id.button_delete_api_profile)
-        haruhiImage = findViewById(R.id.image_haruhi)
+    private fun bindViews(content: android.view.View) {
+        accessibilityStatus = content.findViewById(R.id.text_accessibility_status)
+        overlayStatus = content.findViewById(R.id.text_overlay_status)
+        missionStatus = content.findViewById(R.id.text_mission_status)
+        dueCount = content.findViewById(R.id.text_due_count)
+        noteCount = content.findViewById(R.id.text_note_count)
+        wordCount = content.findViewById(R.id.text_word_count)
+        reviewButton = content.findViewById(R.id.button_start_review)
+        haruhiImage = content.findViewById(R.id.image_haruhi)
     }
 
-    private fun startHeroGifIfSupported() {
-        playHaruhiGif(HARUHI_GIFS[currentHaruhiGifIndex])
-    }
-
-    private fun playHaruhiGif(drawableRes: Int) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            haruhiImage.setImageResource(drawableRes)
-            return
-        }
-        runCatching {
-            val actualSource = ImageDecoder.createSource(resources, drawableRes)
-            val drawable = ImageDecoder.decodeDrawable(actualSource)
-            haruhiImage.setImageDrawable(drawable)
-            (drawable as? AnimatedImageDrawable)?.start()
-        }.onFailure {
-            haruhiImage.setImageResource(drawableRes)
-        }
-    }
-
-    private fun setHaruhiImage(drawableRes: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            playHaruhiGif(drawableRes)
-        } else {
-            haruhiImage.setImageResource(drawableRes)
-        }
-    }
-
-    private fun bindHaruhiInteraction() {
-        haruhiImage.setOnClickListener {
-            recordHaruhiTap()
-            animateHaruhiTap()
-            currentHaruhiGifIndex = nextHaruhiGifIndex()
-            setHaruhiImage(HARUHI_GIFS[currentHaruhiGifIndex])
-            maybeShowHaruhiScoldDialog()
-        }
-    }
-
-    private fun recordHaruhiTap() {
-        val now = System.currentTimeMillis()
-        haruhiTapTimestamps.addLast(now)
-        while (haruhiTapTimestamps.isNotEmpty() &&
-            now - haruhiTapTimestamps.first() > HARUHI_TAP_WINDOW_MS
-        ) {
-            haruhiTapTimestamps.removeFirst()
-        }
-    }
-
-    private fun animateHaruhiTap() {
-        haruhiImage.animate()
-            .cancel()
-        haruhiImage.animate()
-            .scaleX(0.92f)
-            .scaleY(0.92f)
-            .setDuration(70L)
-            .withEndAction {
-                haruhiImage.animate()
-                    .scaleX(1.06f)
-                    .scaleY(1.06f)
-                    .setDuration(90L)
-                    .withEndAction {
-                        haruhiImage.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(80L)
-                            .start()
-                    }
-                    .start()
-            }
-            .start()
-    }
-
-    private fun nextHaruhiGifIndex(): Int {
-        if (HARUHI_GIFS.size <= 1) return 0
-        var next = Random.nextInt(HARUHI_GIFS.size)
-        if (next == currentHaruhiGifIndex) {
-            next = (next + 1) % HARUHI_GIFS.size
-        }
-        return next
-    }
-
-    private fun maybeShowHaruhiScoldDialog() {
-        val now = System.currentTimeMillis()
-        if (haruhiTapTimestamps.size < HARUHI_SCOLD_TAP_COUNT) return
-        if (now - lastHaruhiScoldAt < HARUHI_SCOLD_COOLDOWN_MS) return
-        lastHaruhiScoldAt = now
-        haruhiTapTimestamps.clear()
-
-        val message = HARUHI_SCOLD_LINES.random()
-        AlertDialog.Builder(this)
-            .setTitle("团长警告")
-            .setMessage(message)
-            .setPositiveButton("知道了，团长") { dialog, _ -> dialog.dismiss() }
-            .show()
-    }
-
-    private fun loadSettingsIntoUi() {
-        refreshApiProfileSpinner(settingsRepository.selectedApiProfileId())
-        loadSelectedApiProfileIntoUi()
-        targetPackages.setText(settingsRepository.targetPackages.joinToString("\n"))
-        enabledSwitch.isChecked = settingsRepository.enabled
-        autoGrammarSwitch.isChecked = settingsRepository.autoGrammarAnalysis
-    }
-
-    private fun bindActions() {
+    private fun bindActions(content: android.view.View) {
         bindHaruhiInteraction()
 
-        findViewById<ImageButton>(R.id.button_github).setOnClickListener {
-            startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/realMisakaMikoto/X-Furigana-Overlay")
-                )
-            )
-        }
-
-        findViewById<Button>(R.id.button_accessibility_settings).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-
-        findViewById<Button>(R.id.button_overlay_settings).setOnClickListener {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
-        }
-
-        findViewById<Button>(R.id.button_save_settings).setOnClickListener {
-            saveSettings()
-            refreshApiProfileSpinner(settingsRepository.selectedApiProfileId())
-            Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
-        }
-
-        apiProfileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: android.view.View?,
-                position: Int,
-                id: Long
-            ) {
-                if (suppressProfileSelection) return
-                val selected = apiProfiles.getOrNull(position) ?: return
-                if (selected.id == settingsRepository.selectedApiProfileId()) return
-
-                saveCurrentApiProfile()
-                settingsRepository.selectApiProfile(selected.id)
-                loadSelectedApiProfileIntoUi()
-                refreshApiProfileSpinner(selected.id)
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-        }
-
-        findViewById<Button>(R.id.button_add_api_profile).setOnClickListener {
-            saveSettings()
-            val newProfile = settingsRepository.newApiProfile()
-            settingsRepository.saveApiProfile(newProfile)
-            refreshApiProfileSpinner(newProfile.id)
-            loadSelectedApiProfileIntoUi()
-            Toast.makeText(this, "已新增 API 配置", Toast.LENGTH_SHORT).show()
-        }
-
-        deleteApiProfileButton.setOnClickListener {
-            val current = settingsRepository.selectedApiProfile()
-            if (!settingsRepository.deleteApiProfile(current.id)) {
-                Toast.makeText(this, "至少保留一个 API 配置", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            refreshApiProfileSpinner(settingsRepository.selectedApiProfileId())
-            loadSelectedApiProfileIntoUi()
-            Toast.makeText(this, "已删除 API 配置", Toast.LENGTH_SHORT).show()
-        }
-
-        enabledSwitch.setOnCheckedChangeListener { _, checked ->
-            settingsRepository.enabled = checked
-            if (Settings.canDrawOverlays(this)) {
-                OverlayController.showButton(applicationContext)
-            }
-        }
-
-        autoGrammarSwitch.setOnCheckedChangeListener { _, checked ->
-            settingsRepository.autoGrammarAnalysis = checked
-            Toast.makeText(
-                this,
-                if (checked) "好，注音完团长顺手把句子也拆了" else "行吧，省着点用，语法改成手动点",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-
-        findViewById<Button>(R.id.button_show_overlay).setOnClickListener {
-            saveSettings()
+        content.findViewById<Button>(R.id.button_show_overlay).setOnClickListener {
             if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "请先开启悬浮窗权限", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "先把悬浮窗权限交出来，团长才能出动。", Toast.LENGTH_SHORT).show()
+                openOverlaySettings()
                 return@setOnClickListener
             }
             OverlayController.showButton(applicationContext)
+            Toast.makeText(this, "SOS 已就位。现在去 X 找日文！", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<Button>(R.id.button_open_notes).setOnClickListener {
-            startActivity(Intent(this, NotesActivity::class.java))
+        content.findViewById<Button>(R.id.button_accessibility_settings).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        content.findViewById<Button>(R.id.button_overlay_settings).setOnClickListener {
+            openOverlaySettings()
+        }
+        content.findViewById<Button>(R.id.button_open_settings).setOnClickListener {
+            AppMotion.startContainer(this, it, Intent(this, SettingsActivity::class.java))
+        }
+        content.findViewById<android.view.View>(R.id.action_due).setOnClickListener {
+            AppMotion.startContainer(this, it, Intent(this, ReviewActivity::class.java))
+        }
+        content.findViewById<android.view.View>(R.id.action_notes).setOnClickListener {
+            AppMotion.startContainer(this, it, Intent(this, NotesActivity::class.java))
+        }
+        content.findViewById<android.view.View>(R.id.action_words).setOnClickListener {
+            AppMotion.startContainer(this, it, Intent(this, WordbookActivity::class.java))
+        }
+        reviewButton.setOnClickListener {
+            AppMotion.startContainer(this, it, Intent(this, ReviewActivity::class.java))
+        }
+    }
+
+    private fun updateDashboard() {
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
+        val overlayEnabled = Settings.canDrawOverlays(this)
+        applyStatusChip(accessibilityStatus, accessibilityEnabled)
+        applyStatusChip(overlayStatus, overlayEnabled)
+
+        missionStatus.text = when {
+            accessibilityEnabled && overlayEnabled -> "装备齐全。打开 X，召唤 SOS 开始搜查。"
+            !accessibilityEnabled && !overlayEnabled -> "还缺两项权限。先完成整备，不许偷懒。"
+            else -> "只差一项权限，马上就能出动。"
         }
 
-        findViewById<Button>(R.id.button_open_wordbook).setOnClickListener {
-            startActivity(Intent(this, WordbookActivity::class.java))
-        }
-    }
-
-    private fun saveSettings() {
-        saveCurrentApiProfile()
-        settingsRepository.targetPackages = targetPackages.text.toString()
-            .split('\n', ',', ';', ' ')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-    }
-
-    private fun saveCurrentApiProfile() {
-        val current = settingsRepository.selectedApiProfile()
-        settingsRepository.saveApiProfile(
-            current.copy(
-                name = apiProfileName.text.toString(),
-                apiBaseUrl = apiBaseUrl.text.toString(),
-                apiKey = apiKey.text.toString(),
-                model = model.text.toString()
-            )
-        )
-    }
-
-    private fun loadSelectedApiProfileIntoUi() {
-        val selected = settingsRepository.selectedApiProfile()
-        apiProfileName.setText(selected.name)
-        apiBaseUrl.setText(selected.apiBaseUrl)
-        apiKey.setText(selected.apiKey)
-        model.setText(selected.model)
-        deleteApiProfileButton.isEnabled = settingsRepository.apiProfiles().size > 1
-    }
-
-    private fun refreshApiProfileSpinner(selectedId: String) {
-        apiProfiles = settingsRepository.apiProfiles()
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            apiProfiles.map { it.name }
-        ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-
-        val selectedIndex = apiProfiles.indexOfFirst { it.id == selectedId }
-            .takeIf { it >= 0 }
-            ?: 0
-        suppressProfileSelection = true
-        apiProfileSpinner.adapter = adapter
-        apiProfileSpinner.setSelection(selectedIndex, false)
-        suppressProfileSelection = false
-        deleteApiProfileButton.isEnabled = apiProfiles.size > 1
-    }
-
-    private fun updatePermissionStatus() {
-        applyStatusChip(accessibilityStatus, isAccessibilityServiceEnabled())
-        applyStatusChip(overlayStatus, Settings.canDrawOverlays(this))
+        val words = wordbookRepository.getWords()
+        val now = System.currentTimeMillis()
+        val due = words.count { it.dueAt <= now }
+        dueCount.text = due.toString()
+        noteCount.text = noteRepository.getNotes().size.toString()
+        wordCount.text = words.size.toString()
+        reviewButton.text = if (due > 0) "开始读音填空 · $due 题" else "今日复习已完成"
+        reviewButton.isEnabled = due > 0
     }
 
     private fun applyStatusChip(chip: TextView, enabled: Boolean) {
-        chip.text = if (enabled) "已开启" else "未开启"
+        chip.text = if (enabled) "已开启" else "待开启"
         chip.setBackgroundResource(
             if (enabled) R.drawable.bg_status_chip_on else R.drawable.bg_status_chip_off
         )
-        chip.setTextColor(
-            getColor(if (enabled) R.color.haruhi_hair else R.color.haruhi_danger)
+        chip.setTextColor(getColor(if (enabled) R.color.haruhi_hair else R.color.haruhi_danger))
+    }
+
+    private fun openOverlaySettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName")
+            )
         )
     }
 
@@ -362,6 +150,64 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun startHeroGifIfSupported() {
+        playHaruhiGif(HARUHI_GIFS[currentHaruhiGifIndex])
+    }
+
+    private fun playHaruhiGif(drawableRes: Int) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            haruhiImage.setImageResource(drawableRes)
+            return
+        }
+        runCatching {
+            val source = ImageDecoder.createSource(resources, drawableRes)
+            val drawable = ImageDecoder.decodeDrawable(source)
+            haruhiImage.setImageDrawable(drawable)
+            (drawable as? AnimatedImageDrawable)?.start()
+        }.onFailure {
+            haruhiImage.setImageResource(drawableRes)
+        }
+    }
+
+    private fun bindHaruhiInteraction() {
+        haruhiImage.setOnClickListener {
+            recordHaruhiTap()
+            currentHaruhiGifIndex = nextHaruhiGifIndex()
+            playHaruhiGif(HARUHI_GIFS[currentHaruhiGifIndex])
+            maybeShowHaruhiScoldDialog()
+        }
+    }
+
+    private fun recordHaruhiTap() {
+        val now = System.currentTimeMillis()
+        haruhiTapTimestamps.addLast(now)
+        while (haruhiTapTimestamps.isNotEmpty() &&
+            now - haruhiTapTimestamps.first() > HARUHI_TAP_WINDOW_MS
+        ) {
+            haruhiTapTimestamps.removeFirst()
+        }
+    }
+
+    private fun nextHaruhiGifIndex(): Int {
+        if (HARUHI_GIFS.size <= 1) return 0
+        var next = Random.nextInt(HARUHI_GIFS.size)
+        if (next == currentHaruhiGifIndex) next = (next + 1) % HARUHI_GIFS.size
+        return next
+    }
+
+    private fun maybeShowHaruhiScoldDialog() {
+        val now = System.currentTimeMillis()
+        if (haruhiTapTimestamps.size < HARUHI_SCOLD_TAP_COUNT) return
+        if (now - lastHaruhiScoldAt < HARUHI_SCOLD_COOLDOWN_MS) return
+        lastHaruhiScoldAt = now
+        haruhiTapTimestamps.clear()
+        AlertDialog.Builder(this)
+            .setTitle("团长警告")
+            .setMessage(HARUHI_SCOLD_LINES.random())
+            .setPositiveButton("知道了，团长") { dialog, _ -> dialog.dismiss() }
+            .show()
+    }
+
     companion object {
         private const val HARUHI_TAP_WINDOW_MS = 6_000L
         private const val HARUHI_SCOLD_TAP_COUNT = 4
@@ -375,11 +221,9 @@ class MainActivity : Activity() {
             R.drawable.haruhi_poke
         )
         private val HARUHI_SCOLD_LINES = listOf(
-            "阿虚，你戳我干嘛啊？现在可是团长办公时间。",
-            "再戳我要交罚金。没错，团长决定的。",
-            "阿虚！你是想启动什么奇怪的事件吗？",
-            "不要一直戳啦。想让我换动作就好好说。",
-            "团长不是按钮！不过既然你这么坚持，我就特别允许一次。"
+            "阿虚，你戳我干嘛？作战还没完成呢。",
+            "团长不是按钮！SOS 才是。",
+            "再戳也不会凭空多记住一个单词。"
         )
     }
 }

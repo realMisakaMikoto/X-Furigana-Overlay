@@ -46,6 +46,7 @@ class NoteDetailActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppMotion.prepareContainerActivity(this, savedInstanceState)
         repository = NoteRepository(applicationContext)
         val loaded = intent.getStringExtra(EXTRA_NOTE_ID)?.let { repository.getNote(it) }
         if (loaded == null) {
@@ -57,7 +58,10 @@ class NoteDetailActivity : Activity() {
         annotations = FuriganaAnnotationCodec.decode(loaded.annotationHintsJson)
             .ifEmpty { RubyAnnotationExtractor.fromRubyHtml(loaded.originalText, loaded.rubyHtml) }
         grammarTokens = GrammarTokenCodec.decode(loaded.grammarJson)
-        setContentView(createContentView(loaded))
+        setContentView(createContentView(loaded).also {
+            AppWindowInsets.apply(it)
+            AppMotion.bindContainerTarget(this, it)
+        })
         renderPlain()
     }
 
@@ -116,7 +120,7 @@ class NoteDetailActivity : Activity() {
         )
 
         grammarButton = Button(this).apply {
-            text = if (grammarTokens.isEmpty()) "语法分析" else "显示语法"
+            text = if (grammarTokens.isEmpty()) "分析句子结构" else "显示句子结构"
             AppUi.primary(this)
             setOnClickListener { onGrammarClick() }
         }
@@ -128,9 +132,9 @@ class NoteDetailActivity : Activity() {
             )
             addView(
                 Button(this@NoteDetailActivity).apply {
-                    text = "分词/加词"
+                    text = "选词/加词"
                     AppUi.ghost(this)
-                    setOnClickListener { openAddWord() }
+                    setOnClickListener { openAddWord(this) }
                 },
                 LinearLayout.LayoutParams(0, dp(50), 1f).apply {
                     marginStart = dp(8)
@@ -160,7 +164,7 @@ class NoteDetailActivity : Activity() {
             )
         )
         if (!analyzing) {
-            grammarButton.text = if (grammarTokens.isEmpty()) "语法分析" else "显示语法"
+            grammarButton.text = if (grammarTokens.isEmpty()) "分析句子结构" else "显示句子结构"
         }
     }
 
@@ -169,7 +173,7 @@ class NoteDetailActivity : Activity() {
         if (grammarTokens.isEmpty()) return
         grammarShown = true
         loadHtml(GrammarHtmlRenderer.renderHtml(current.originalText, annotations, grammarTokens))
-        grammarButton.text = "隐藏语法"
+        grammarButton.text = "隐藏句子结构"
     }
 
     private fun loadHtml(html: String) {
@@ -200,14 +204,14 @@ class NoteDetailActivity : Activity() {
         if (!client.isConfigured()) {
             Toast.makeText(
                 this,
-                "没配 API 就想让模型干活？先去首页把 API 填好，这是团长命令。",
+                "请先到“设置”填写 API 地址、API Key 和模型名，再分析句子结构。",
                 Toast.LENGTH_SHORT
             ).show()
             return
         }
         analyzing = true
         grammarButton.isEnabled = false
-        grammarButton.text = "团长正在拆解句子…"
+        grammarButton.text = "正在分析句子结构…"
         uiScope.launch {
             val result = client.analyze(current.originalText)
             analyzing = false
@@ -219,15 +223,15 @@ class NoteDetailActivity : Activity() {
                     renderGrammar()
                     Toast.makeText(
                         this@NoteDetailActivity,
-                        "句子结构拆完了，以后打开这条笔记不再重复分析。",
+                        "句子结构分析完成，以后打开这条笔记不再重复分析。",
                         Toast.LENGTH_SHORT
                     ).show()
                 },
                 onFailure = { throwable ->
-                    grammarButton.text = "语法分析"
+                    grammarButton.text = "分析句子结构"
                     Toast.makeText(
                         this@NoteDetailActivity,
-                        "模型这次没拆出来（${throwable.message?.take(60)}）。笔记还好好的，稍后再试。",
+                        "句子结构分析失败（${throwable.message?.take(60)}）。笔记不受影响，请稍后重试。",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -235,7 +239,7 @@ class NoteDetailActivity : Activity() {
         }
     }
 
-    private fun openAddWord() {
+    private fun openAddWord(source: View) {
         val current = note ?: return
         val hints = JSONArray()
         annotations.forEach { annotation ->
@@ -247,12 +251,15 @@ class NoteDetailActivity : Activity() {
                     .put("e", annotation.end)
             )
         }
-        startActivity(
+        AppMotion.startContainer(
+            this,
+            source,
             Intent(this, AddWordActivity::class.java)
                 .putExtra(AddWordActivity.EXTRA_SOURCE_TEXT, current.originalText)
                 .putExtra(AddWordActivity.EXTRA_READING_HINTS, hints.toString())
         )
     }
+
 
     private fun formatTime(timeMillis: Long): String {
         if (timeMillis <= 0L) return ""

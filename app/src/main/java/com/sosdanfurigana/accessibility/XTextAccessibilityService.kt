@@ -40,11 +40,14 @@ class XTextAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        ensureSettings()
         if (event == null) return
 
         val eventType = event.eventType
         val packageName = event.packageName?.toString()
+        // Ignore our own UI before touching settings, overlay state, or scan caches.
+        if (packageName == packageNameOfThisApp()) return
+
+        ensureSettings()
         XFuriganaPerf.d("event type=$eventType package=$packageName")
         showOverlayButtonIfNeeded()
 
@@ -53,7 +56,6 @@ class XTextAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (packageName == packageNameOfThisApp()) return
         if (!isSupportedEvent(eventType)) return
 
         if (!settingsRepository.isTargetPackage(packageName)) {

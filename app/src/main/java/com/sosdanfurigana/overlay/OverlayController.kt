@@ -1,5 +1,8 @@
 package com.sosdanfurigana.overlay
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -9,14 +12,17 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.PathInterpolator
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.FrameLayout
@@ -82,15 +88,16 @@ object OverlayController {
         val button = OverlayButtonView(appContext).apply {
             setImageResource(R.drawable.sos)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "SOS Furigana"
+            contentDescription = "SOS 日文注音按钮"
             setPadding(
-                dp(appContext, 2),
-                dp(appContext, 2),
-                dp(appContext, 2),
-                dp(appContext, 2)
+                dp(appContext, 7),
+                dp(appContext, 7),
+                dp(appContext, 7),
+                dp(appContext, 7)
             )
-            background = ovalDrawable(Color.WHITE, AppUi.HEADBAND)
-            elevation = dp(appContext, 10).toFloat()
+            background = ovalDrawable(Color.WHITE)
+            clipToOutline = true
+            elevation = dp(appContext, 5).toFloat()
         }
 
         val buttonSize = dp(appContext, 56)
@@ -137,15 +144,28 @@ object OverlayController {
     }
 
     fun hidePanel() {
-        val view = panelView ?: return
-        panelParams?.let { rememberPanelBounds(it) }
-        destroyWebViews(view)
-        runCatching { windowManager?.removeView(view) }
+        val view = panelView ?: run {
+            buttonView?.visibility = View.VISIBLE
+            return
+        }
+        if (animationsEnabled() && view.visibility == View.VISIBLE) {
+            animatePanelClosed(view)
+            return
+        }
+        removePanel(view)
+    }
+
+    private fun removePanel(view: View) {
+        val params = panelParams
         panelView = null
         panelContentView = null
         panelParams = null
+        params?.let { rememberPanelBounds(it) }
+        destroyWebViews(view)
+        runCatching { windowManager?.removeView(view) }
         currentCopyHtml = null
         currentCopyText = null
+        buttonView?.visibility = View.VISIBLE
     }
 
     fun hideAll() {
@@ -173,8 +193,8 @@ object OverlayController {
         windowManager = wm
 
         val metrics = appContext.resources.displayMetrics
-        val defaultWidth = (metrics.widthPixels * 0.9f).toInt()
-        val defaultHeight = (metrics.heightPixels * 0.6f).toInt()
+        val defaultWidth = (metrics.widthPixels * 0.84f).toInt()
+        val defaultHeight = (metrics.heightPixels * 0.4f).toInt()
         val minWidth = dp(appContext, 280)
         val minHeight = dp(appContext, 260)
         val width = clamp(
@@ -190,12 +210,12 @@ object OverlayController {
         val x = if (lastPanelX != UNSET_POSITION) {
             clamp(lastPanelX, 0, metrics.widthPixels - width)
         } else {
-            (metrics.widthPixels - width) / 2
+            metrics.widthPixels - width - dp(appContext, 12)
         }
         val y = if (lastPanelY != UNSET_POSITION) {
             clamp(lastPanelY, 0, metrics.heightPixels - height)
         } else {
-            ((metrics.heightPixels - height) * 0.35f).toInt()
+            ((metrics.heightPixels - height) * 0.22f).toInt()
         }
 
         val params = WindowManager.LayoutParams(
@@ -217,17 +237,18 @@ object OverlayController {
             orientation = LinearLayout.VERTICAL
             setPadding(
                 dp(appContext, 14),
-                dp(appContext, 12),
+                dp(appContext, 8),
                 dp(appContext, 14),
                 dp(appContext, 14)
             )
-            background = roundedGradientDrawable(
+            background = roundedDrawable(
                 AppUi.HAIR_DEEP,
-                Color.rgb(58, 36, 28),
-                dp(appContext, 20).toFloat(),
-                Color.argb(90, 255, 212, 77)
+                dp(appContext, 16).toFloat()
             )
-            elevation = dp(appContext, 10).toFloat()
+            elevation = dp(appContext, 6).toFloat()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                accessibilityPaneTitle = "SOS 注音面板"
+            }
         }
         container.addView(
             root,
@@ -239,8 +260,8 @@ object OverlayController {
         container.addView(
             resizeHandle(appContext, wm, params, minWidth, minHeight),
             FrameLayout.LayoutParams(
-                dp(appContext, 36),
-                dp(appContext, 36),
+                dp(appContext, 48),
+                dp(appContext, 48),
                 Gravity.BOTTOM or Gravity.END
             )
         )
@@ -250,6 +271,11 @@ object OverlayController {
         runCatching {
             wm.addView(container, params)
             panelView = container
+            if (animationsEnabled()) {
+                animatePanelOpened(container, params)
+            } else {
+                buttonView?.visibility = View.GONE
+            }
             requestPanelScan(appContext, root, SystemClock.elapsedRealtime())
         }.onFailure {
             panelContentView = null
@@ -325,8 +351,11 @@ object OverlayController {
         currentCopyHtml = null
         currentCopyText = null
         root.removeAllViews()
-        root.addView(headerRow(context, "当前屏幕日文 post") {
-            smallButton(context, "关闭").apply { setOnClickListener { hidePanel() } }
+        root.addView(headerRow(context, "屏幕日文") {
+            smallButton(context, "×", ButtonStyle.ICON).apply {
+                contentDescription = "关闭"
+                setOnClickListener { hidePanel() }
+            }
         })
         root.addView(
             LinearLayout(context).apply {
@@ -343,6 +372,7 @@ object OverlayController {
                 1f
             )
         )
+        animateContentChange(root)
     }
 
     private fun renderList(
@@ -356,8 +386,11 @@ object OverlayController {
         currentCopyText = null
         root.removeAllViews()
 
-        root.addView(headerRow(context, "当前屏幕日文 post") {
-            smallButton(context, "关闭").apply { setOnClickListener { hidePanel() } }
+        root.addView(headerRow(context, "屏幕日文") {
+            smallButton(context, "×", ButtonStyle.ICON).apply {
+                contentDescription = "关闭"
+                setOnClickListener { hidePanel() }
+            }
         })
 
         val scrollView = ScrollView(context)
@@ -373,17 +406,17 @@ object OverlayController {
         )
 
         statusMessage?.let { message ->
-            list.addView(emptyText(context, message))
+            list.addView(statusNotice(context, message))
         }
         val visiblePosts = posts.take(MAX_DISPLAYED_POSTS)
         if (visiblePosts.isEmpty()) {
             val message = buildString {
                 append("当前屏幕没有识别到含汉字和假名的日文文本\n")
-                append("请确认当前 App 包名在目标包名列表中\n")
+                append("请确认当前 App 包名在目标 App 包名列表中\n")
                 append("可以尝试滚动页面后重新点击")
                 metrics?.failure?.let { append("\n").append(it) }
             }
-            list.addView(emptyText(context, message))
+            list.addView(statusText(context, "还没发现日文", message))
         } else {
             visiblePosts.forEach { post ->
                 list.addView(postRow(context, post) {
@@ -400,6 +433,7 @@ object OverlayController {
                 1f
             )
         )
+        animateContentChange(root)
     }
 
     private fun renderResult(
@@ -412,26 +446,43 @@ object OverlayController {
         currentCopyText = null
         root.removeAllViews()
 
-        val copyButton = smallButton(context, "复制").apply {
+        val copyButton = smallButton(context, "复制", ButtonStyle.GHOST).apply {
             isEnabled = false
+            alpha = DISABLED_ALPHA
             setOnClickListener { copyCurrentResult(context) }
         }
-        val wordButton = smallButton(context, "加词").apply {
+        val wordButton = smallButton(context, "加词", ButtonStyle.PRIMARY).apply {
             isEnabled = false
+            alpha = DISABLED_ALPHA
         }
         root.addView(headerRow(context, "注音结果") {
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(smallButton(context, "返回列表").apply {
-                    setOnClickListener { renderList(context, root) }
-                })
-                addView(copyButton)
-                addView(wordButton)
-                addView(smallButton(context, "关闭").apply {
-                    setOnClickListener { hidePanel() }
-                })
+            smallButton(context, "×", ButtonStyle.ICON).apply {
+                contentDescription = "关闭"
+                setOnClickListener { hidePanel() }
             }
         })
+        root.addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(context, 8))
+                addView(
+                    smallButton(context, "返回", ButtonStyle.GHOST).apply {
+                        setOnClickListener { renderList(context, root) }
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(context, 44)
+                    )
+                )
+                addView(
+                    View(context),
+                    LinearLayout.LayoutParams(0, 1, 1f)
+                )
+                addView(copyButton)
+                addView(wordButton)
+            }
+        )
 
         val contentFrame = FrameLayout(context)
         val webView = WebView(context).apply {
@@ -443,8 +494,10 @@ object OverlayController {
         val progress = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            addView(ProgressBar(context))
-            addView(emptyText(context, "生成中..."))
+            addView(ProgressBar(context).apply {
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(AppUi.HEADBAND)
+            })
+            addView(emptyText(context, "正在生成注音..."))
         }
         contentFrame.addView(
             webView,
@@ -468,9 +521,10 @@ object OverlayController {
                 1f
             )
         )
+        animateContentChange(root)
 
         if (!JapaneseTextDetector.isLikelyJapanesePost(post.text)) {
-            showError(progress, "这条文本未通过日文 post 过滤，已取消请求。")
+            showError(progress, "这条文本未通过日文内容筛选，已取消请求。")
             return
         }
 
@@ -499,7 +553,9 @@ object OverlayController {
             )
             GrammarAnalysisFetcher.autoAnalyze(context, cachedNoteId)
             copyButton.isEnabled = true
+            copyButton.alpha = 1f
             wordButton.isEnabled = true
+            wordButton.alpha = 1f
             wordButton.setOnClickListener {
                 openManualAddWord(context, post.text, cachedAnnotations)
             }
@@ -540,7 +596,9 @@ object OverlayController {
                             "annotations=${annotations.size}"
                     )
                     copyButton.isEnabled = true
+                    copyButton.alpha = 1f
                     wordButton.isEnabled = true
+                    wordButton.alpha = 1f
                     wordButton.setOnClickListener {
                         openManualAddWord(context, post.text, annotations)
                     }
@@ -640,16 +698,15 @@ object OverlayController {
     private fun headerRow(context: Context, title: String, trailingFactory: () -> View): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(context, 8))
+            setPadding(0, 0, 0, dp(context, 10))
 
             addView(
-                dragHandleBar(context),
+                dragHandle(context),
                 LinearLayout.LayoutParams(
-                    dp(context, 72),
-                    dp(context, 5)
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(context, 28)
                 ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    setMargins(0, 0, 0, dp(context, 8))
+                    setMargins(0, 0, 0, dp(context, 2))
                 }
             )
             addView(
@@ -659,9 +716,9 @@ object OverlayController {
                     addView(
                         TouchTextView(context).apply {
                             text = title
-                            textSize = 16f
+                            textSize = 17f
                             typeface = Typeface.DEFAULT_BOLD
-                            setTextColor(AppUi.CREAM)
+                            setTextColor(AppUi.WARM_WHITE)
                             maxLines = 1
                             setOnTouchListener(panelMoveTouchListener(context))
                         },
@@ -677,15 +734,19 @@ object OverlayController {
         }
     }
 
-    private fun dragHandleBar(context: Context): View {
-        return View(context).apply {
-            background = roundedGradientDrawable(
-                AppUi.HEADBAND,
-                AppUi.UNIFORM_BLUE,
-                dp(context, 3).toFloat(),
-                null
-            )
+    private fun dragHandle(context: Context): FrameLayout {
+        return FrameLayout(context).apply {
+            contentDescription = "拖动面板"
             setOnTouchListener(panelMoveTouchListener(context))
+            addView(
+                View(context).apply {
+                    background = roundedDrawable(
+                        Color.argb(120, 246, 235, 224),
+                        dp(context, 2).toFloat()
+                    )
+                },
+                FrameLayout.LayoutParams(dp(context, 42), dp(context, 4), Gravity.CENTER)
+            )
         }
     }
 
@@ -705,15 +766,13 @@ object OverlayController {
     ): TextView {
         return TouchTextView(context).apply {
             text = "↘"
-            textSize = 16f
+            textSize = 14f
             gravity = Gravity.CENTER
-            setTextColor(AppUi.HAIR_DEEP)
-            alpha = 0.9f
-            background = roundedGradientDrawable(
-                AppUi.HEADBAND,
-                AppUi.HEADBAND_DEEP,
-                dp(context, 12).toFloat(),
-                Color.argb(120, 255, 255, 255)
+            setTextColor(Color.argb(180, 246, 235, 224))
+            contentDescription = "调整面板大小"
+            background = roundedDrawable(
+                Color.argb(28, 255, 255, 255),
+                dp(context, 12).toFloat()
             )
             setOnTouchListener(PanelResizeTouchListener(wm, params, minWidth, minHeight))
         }
@@ -721,17 +780,18 @@ object OverlayController {
 
     private fun postRow(context: Context, post: DetectedPost, onClick: () -> Unit): TextView {
         return TextView(context).apply {
-            text = post.text.take(100)
+            text = post.text
             textSize = 15f
             setTextColor(AppUi.INK)
             setLineSpacing(dp(context, 3).toFloat(), 1f)
             setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
+            maxLines = 3
+            ellipsize = TextUtils.TruncateAt.END
             background = AppUi.ripple(
                 AppUi.rounded(
                     context,
-                    Color.argb(242, 250, 252, 253),
-                    12,
-                    Color.argb(150, 169, 219, 234)
+                    AppUi.SURFACE,
+                    12
                 ),
                 0x33E59B2D
             )
@@ -757,10 +817,52 @@ object OverlayController {
         }
     }
 
-    private fun smallButton(context: Context, label: String): Button {
+    private fun statusText(context: Context, title: String, message: String): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 16))
+            addView(TextView(context).apply {
+                text = title
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(AppUi.HEADBAND)
+                gravity = Gravity.CENTER
+            })
+            addView(TextView(context).apply {
+                text = message
+                textSize = 14f
+                setTextColor(AppUi.WARM_WHITE)
+                setLineSpacing(dp(context, 4).toFloat(), 1f)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(context, 6), 0, 0)
+            })
+        }
+    }
+
+    private fun statusNotice(context: Context, message: String): TextView {
+        return TextView(context).apply {
+            text = message
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(AppUi.HEADBAND)
+            gravity = Gravity.CENTER
+            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+            background = roundedDrawable(
+                Color.argb(24, 255, 212, 77),
+                dp(context, 10).toFloat()
+            )
+        }
+    }
+
+    private fun smallButton(
+        context: Context,
+        label: String,
+        style: ButtonStyle = ButtonStyle.GHOST
+    ): Button {
         return Button(context).apply {
             text = label
-            textSize = 12f
+            textSize = 13f
             minHeight = 0
             minWidth = 0
             minimumHeight = 0
@@ -768,19 +870,120 @@ object OverlayController {
             stateListAnimator = null
             setPadding(dp(context, 12), 0, dp(context, 12), 0)
             isAllCaps = false
-            setTextColor(AppUi.HAIR)
-            background = AppUi.ripple(
-                AppUi.rounded(context, AppUi.HEADBAND_SOFT, 999, AppUi.HEADBAND_DEEP),
-                0x33E59B2D
-            )
+            when (style) {
+                ButtonStyle.GHOST -> {
+                    setTextColor(AppUi.WARM_WHITE)
+                    background = AppUi.ripple(
+                        AppUi.rounded(context, Color.argb(28, 255, 255, 255), 10),
+                        0x33FFFFFF
+                    )
+                }
+
+                ButtonStyle.PRIMARY -> {
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(AppUi.HAIR_DEEP)
+                    background = AppUi.ripple(
+                        AppUi.rounded(context, AppUi.HEADBAND, 10),
+                        0x33241611
+                    )
+                }
+                ButtonStyle.ICON -> {
+                    textSize = 22f
+                    setPadding(0, 0, 0, dp(context, 2))
+                    setTextColor(AppUi.WARM_WHITE)
+                    background = AppUi.ripple(
+                        AppUi.rounded(context, Color.argb(28, 255, 255, 255), 999),
+                        0x33FFFFFF
+                    )
+                }
+            }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(context, 30)
+                if (style == ButtonStyle.ICON) {
+                    dp(context, 44)
+                } else {
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                },
+                dp(context, 44)
             ).apply {
                 marginStart = dp(context, 6)
             }
         }
     }
+
+    private fun animatePanelOpened(view: View, params: WindowManager.LayoutParams) {
+        val buttonX = lastButtonX.takeIf { it != UNSET_POSITION } ?: params.x
+        val buttonY = lastButtonY.takeIf { it != UNSET_POSITION } ?: params.y
+        val pivotX = (buttonX - params.x + dp(view.context, 28)).toFloat()
+            .coerceIn(0f, params.width.toFloat())
+        val pivotY = (buttonY - params.y + dp(view.context, 28)).toFloat()
+            .coerceIn(0f, params.height.toFloat())
+        view.pivotX = pivotX
+        view.pivotY = pivotY
+        view.scaleX = 0.18f
+        view.scaleY = 0.18f
+        view.alpha = 0f
+        buttonView?.animate()
+            ?.alpha(0f)
+            ?.scaleX(0.82f)
+            ?.scaleY(0.82f)
+            ?.setDuration(120L)
+            ?.start()
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(260L)
+            .setInterpolator(MOTION_EASING)
+            .withEndAction { buttonView?.visibility = View.GONE }
+            .start()
+    }
+
+    private fun animatePanelClosed(view: View) {
+        buttonView?.apply {
+            visibility = View.VISIBLE
+            alpha = 0f
+            scaleX = 0.82f
+            scaleY = 0.82f
+        }
+        view.animate().cancel()
+        view.animate()
+            .alpha(0f)
+            .scaleX(0.18f)
+            .scaleY(0.18f)
+            .setDuration(190L)
+            .setInterpolator(MOTION_EASING)
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    view.animate().setListener(null)
+                    removePanel(view)
+                    buttonView?.apply {
+                        animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(150L)
+                            .setInterpolator(MOTION_EASING)
+                            .start()
+                    }
+                }
+            })
+            .start()
+    }
+
+    private fun animateContentChange(view: View) {
+        if (!animationsEnabled()) return
+        view.animate().cancel()
+        view.alpha = 0.65f
+        view.translationX = dp(view.context, 18).toFloat()
+        view.animate()
+            .alpha(1f)
+            .translationX(0f)
+            .setDuration(190L)
+            .setInterpolator(MOTION_EASING)
+            .start()
+    }
+
+    private fun animationsEnabled(): Boolean = ValueAnimator.areAnimatorsEnabled()
 
     private fun destroyWebViews(view: View) {
         if (view is WebView) {
@@ -807,21 +1010,10 @@ object OverlayController {
         }
     }
 
-    private fun ovalDrawable(color: Int, strokeColor: Int): GradientDrawable {
+    private fun ovalDrawable(color: Int): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color)
-            setStroke(2, strokeColor)
-        }
-    }
-
-    private fun ovalGradientDrawable(startColor: Int, endColor: Int, strokeColor: Int): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(startColor, endColor)
-        ).apply {
-            shape = GradientDrawable.OVAL
-            setStroke(2, strokeColor)
         }
     }
 
@@ -1048,6 +1240,12 @@ object OverlayController {
         }
     }
 
+    private enum class ButtonStyle {
+        GHOST,
+        PRIMARY,
+        ICON
+    }
+
     private open class TouchTextView(context: Context) : TextView(context) {
         override fun performClick(): Boolean {
             super.performClick()
@@ -1058,4 +1256,6 @@ object OverlayController {
     private const val UNSET_POSITION = Int.MIN_VALUE
     private const val PANEL_SCAN_FALLBACK_MS = 1500L
     private const val MAX_DISPLAYED_POSTS = 20
+    private const val DISABLED_ALPHA = 0.48f
+    private val MOTION_EASING = PathInterpolator(0.2f, 0f, 0f, 1f)
 }

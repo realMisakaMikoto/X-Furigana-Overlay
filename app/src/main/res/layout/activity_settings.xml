@@ -1,0 +1,520 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_app_gradient"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="32dp">
+
+        <!-- 顶栏：印章 + 标题 + GitHub -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:contentDescription="SOS Furigana 团图标"
+                android:scaleType="fitCenter"
+                android:src="@drawable/sos" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/app_name"
+                    android:textColor="@color/haruhi_ink"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="SOS 団日文阅读学习助手"
+                    android:textColor="@color/haruhi_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/button_github"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_icon_button"
+                android:contentDescription="打开 GitHub 项目"
+                android:padding="11dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_github" />
+        </LinearLayout>
+
+        <!-- 团长 Hero：深棕主场 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_hero"
+            android:elevation="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="18dp">
+
+            <FrameLayout
+                android:layout_width="98dp"
+                android:layout_height="98dp"
+                android:background="@drawable/bg_hero_media"
+                android:padding="5dp">
+
+                <ImageView
+                    android:id="@+id/image_haruhi"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="凉宫春日互动形象"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/haruhi_start" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="団長モード"
+                    android:textColor="@color/haruhi_cream"
+                    android:textSize="21sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="打开 X，点一下 SOS 悬浮按钮，让屏幕上的日文内容变得能读。"
+                    android:textColor="@color/haruhi_warm_white"
+                    android:textSize="13sp" />
+
+                <View
+                    android:layout_width="96dp"
+                    android:layout_height="5dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_headband_rule" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 权限状态 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_section"
+                android:elevation="1dp"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="无障碍服务"
+                    android:textColor="@color/haruhi_hair_soft"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_accessibility_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_status_chip_off"
+                    android:gravity="center"
+                    android:paddingTop="7dp"
+                    android:paddingBottom="7dp"
+                    android:textColor="@color/haruhi_danger"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/button_accessibility_settings"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/button_ghost"
+                    android:text="去设置"
+                    android:textColor="@color/haruhi_hair" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_section"
+                android:elevation="1dp"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="悬浮窗权限"
+                    android:textColor="@color/haruhi_hair_soft"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_overlay_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_status_chip_off"
+                    android:gravity="center"
+                    android:paddingTop="7dp"
+                    android:paddingBottom="7dp"
+                    android:textColor="@color/haruhi_danger"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/button_overlay_settings"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/button_ghost"
+                    android:text="去设置"
+                    android:textColor="@color/haruhi_hair" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_privacy_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_section_tint"
+            android:lineSpacingExtra="3dp"
+            android:padding="14dp"
+            android:text="无障碍服务只读取目标 App 当前屏幕文本并在本地筛选。选择内容生成注音时会发送该文本；自动句子结构分析和加词补全也可能按设置与操作发送原文或词汇信息。所有模型请求均发往你当前选择的 API。"
+            android:textColor="@color/haruhi_muted"
+            android:textSize="13sp" />
+
+        <!-- API 配置 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_section"
+            android:elevation="2dp"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="API 配置"
+                android:textColor="@color/haruhi_ink"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="40dp"
+                android:layout_height="4dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_headband_rule" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="支持 OpenAI-compatible Chat Completions API；API 地址可填 Base URL 或完整接口地址，并可保存多组配置随时切换。"
+                android:textColor="@color/haruhi_muted"
+                android:textSize="12sp" />
+
+            <Spinner
+                android:id="@+id/spinner_api_profiles"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_input"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
+
+            <EditText
+                android:id="@+id/edit_api_profile_name"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:hint="配置名称，例如 OpenAI / 自建网关"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:singleLine="true"
+                android:textColor="@color/haruhi_ink"
+                android:textColorHint="@color/haruhi_muted"
+                android:textSize="14sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/button_add_api_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_secondary"
+                    android:text="新增 API"
+                    android:textColor="@color/haruhi_hair" />
+
+                <Button
+                    android:id="@+id/button_delete_api_profile"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_danger"
+                    android:text="删除 API"
+                    android:textColor="@color/haruhi_danger" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="API 地址"
+                android:textColor="@color/haruhi_hair_soft"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/edit_api_base_url"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:hint="https://api.openai.com/v1/chat/completions"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:textColor="@color/haruhi_ink"
+                android:textColorHint="@color/haruhi_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="API Key"
+                android:textColor="@color/haruhi_hair_soft"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/edit_api_key"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:hint="sk-..."
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:singleLine="true"
+                android:textColor="@color/haruhi_ink"
+                android:textColorHint="@color/haruhi_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="模型名"
+                android:textColor="@color/haruhi_hair_soft"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/edit_model"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:hint="gpt-4.1-mini"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:singleLine="true"
+                android:textColor="@color/haruhi_ink"
+                android:textColorHint="@color/haruhi_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="目标 App 包名"
+                android:textColor="@color/haruhi_hair_soft"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/edit_target_packages"
+                android:layout_width="match_parent"
+                android:layout_height="94dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:gravity="top|start"
+                android:hint="com.twitter.android&#10;com.x.android"
+                android:importantForAutofill="no"
+                android:inputType="textMultiLine"
+                android:textColor="@color/haruhi_ink"
+                android:textColorHint="@color/haruhi_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- 服务开关与入口 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_section"
+            android:elevation="2dp"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <Switch
+                android:id="@+id/switch_enabled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="自动识别目标 App 内容"
+                android:textColor="@color/haruhi_ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="开启后会跟随目标 App 的窗口变化更新候选内容；关闭后仍可点击 SOS 悬浮按钮手动识别。"
+                android:textColor="@color/haruhi_muted"
+                android:textSize="12sp" />
+
+            <Switch
+                android:id="@+id/switch_auto_grammar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="自动分析句子结构"
+                android:textColor="@color/haruhi_ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="注音成功并自动保存笔记后，模型会在后台标注句子结构。想省 token 就关掉，之后可在笔记详情中手动分析。"
+                android:textColor="@color/haruhi_muted"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/button_save_settings"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/button_primary"
+                android:text="保存设置"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/button_show_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/button_secondary"
+                android:text="显示 SOS 悬浮按钮"
+                android:textColor="@color/haruhi_hair" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/button_open_notes"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_ghost"
+                    android:text="笔记"
+                    android:textColor="@color/haruhi_hair" />
+
+                <Button
+                    android:id="@+id/button_open_wordbook"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_ghost"
+                    android:text="单词本"
+                    android:textColor="@color/haruhi_hair" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_usage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_section_tint"
+            android:lineSpacingExtra="5dp"
+            android:padding="16dp"
+            android:text="使用方法：\n1. 保存 API 地址、API Key 和模型名。\n2. 开启悬浮窗权限。\n3. 开启本应用无障碍服务。\n4. 打开 X / Twitter，点击 SOS 悬浮按钮。\n5. 选择一条日文内容生成注音；结果会自动保存到笔记。"
+            android:textColor="@color/haruhi_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="SOS団出品 — 才不是为了阿虚你才做的呢"
+            android:textColor="@color/haruhi_hair_soft"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+</ScrollView>

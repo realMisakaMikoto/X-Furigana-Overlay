@@ -22,6 +22,10 @@
     <!-- 语义色 -->
     <color name="haruhi_danger">#C93A28</color>
     <color name="haruhi_danger_soft">#FDEDEA</color>
+    <color name="haruhi_success">#287A4D</color>
+    <color name="haruhi_success_soft">#E8F5ED</color>
+    <color name="haruhi_warning">#9A5B00</color>
+    <color name="haruhi_warning_soft">#FFF0CC</color>
 
     <!-- 深色面板（悬浮窗）上的文字 -->
     <color name="haruhi_cream">#FFF3CC</color>

@@ -42,7 +42,7 @@ class FuriganaClient(context: Context) {
                 val baseUrl = settingsRepository.apiBaseUrl
                 if (apiKey.isBlank()) error("API Key 缺失")
                 if (model.isBlank()) error("模型名缺失")
-                if (baseUrl.isBlank()) error("API Base URL 缺失")
+                if (baseUrl.isBlank()) error("API 地址缺失")
 
                 val candidateStart = SystemClock.elapsedRealtime()
                 val rawCandidates = FuriganaPromptBuilder.annotationCandidates(originalText)
@@ -108,7 +108,7 @@ class FuriganaClient(context: Context) {
                 val baseUrl = settingsRepository.apiBaseUrl
                 if (apiKey.isBlank()) error("API Key 缺失")
                 if (model.isBlank()) error("模型名缺失")
-                if (baseUrl.isBlank()) error("API Base URL 缺失")
+                if (baseUrl.isBlank()) error("API 地址缺失")
                 if (selectedText.isBlank()) error("选中文本为空")
 
                 val endpoint = resolveChatCompletionsEndpoint(baseUrl)

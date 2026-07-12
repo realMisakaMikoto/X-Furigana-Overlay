@@ -6,6 +6,7 @@
 
     <application
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@drawable/sos"
@@ -23,10 +24,16 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+        <activity
             android:name=".NotesActivity"
             android:exported="false" />
         <activity
             android:name=".WordbookActivity"
+            android:exported="false" />
+        <activity
+            android:name=".WordDetailActivity"
             android:exported="false" />
         <activity
             android:name=".AddWordActivity"

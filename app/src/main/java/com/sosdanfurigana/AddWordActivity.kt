@@ -3,7 +3,6 @@ package com.sosdanfurigana
 import android.app.Activity
 import android.os.Bundle
 import android.text.InputType
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -37,10 +36,14 @@ class AddWordActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppMotion.prepareContainerActivity(this, savedInstanceState)
         repository = WordbookRepository(applicationContext)
         source = intent.getStringExtra(EXTRA_SOURCE_TEXT).orEmpty()
         readingHints = parseReadingHints(intent.getStringExtra(EXTRA_READING_HINTS).orEmpty())
-        setContentView(createContentView())
+        setContentView(createContentView().also {
+            AppWindowInsets.apply(it, includeIme = true)
+            AppMotion.bindContainerTarget(this, it)
+        })
     }
 
     override fun onDestroy() {
@@ -167,7 +170,7 @@ class AddWordActivity : Activity() {
                     Button(this@AddWordActivity).apply {
                         text = "取消"
                         AppUi.ghost(this)
-                        setOnClickListener { finish() }
+                        setOnClickListener { AppMotion.finishContainer(this@AddWordActivity) }
                     },
                     LinearLayout.LayoutParams(0, dp(50), 1f).apply {
                         setMargins(dp(8), 0, 0, 0)
@@ -206,27 +209,10 @@ class AddWordActivity : Activity() {
             readingLoading = false
             readingInput.isEnabled = true
             readingInput.setText(resolveResult.reading)
-            logResolveResult(
-                selected = selected,
-                start = start,
-                end = end,
-                result = resolveResult,
-                willCallLlm = false,
-                finalReading = resolveResult.reading
-            )
-            Toast.makeText(this, "已使用本地注音索引：${resolveResult.hitType}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已根据现有注音填入读音，可手动修改。", Toast.LENGTH_SHORT).show()
             focusReadingInput()
             return
         }
-
-        logResolveResult(
-            selected = selected,
-            start = start,
-            end = end,
-            result = resolveResult,
-            willCallLlm = true,
-            finalReading = resolveResult.reading
-        )
 
         readingLoading = true
         readingInput.isEnabled = false
@@ -243,27 +229,19 @@ class AddWordActivity : Activity() {
             result.fold(
                 onSuccess = { reading ->
                     readingInput.setText(reading)
-                    Log.d(
-                        TAG,
-                        "selection LLM success finalReading=$reading hitType=${resolveResult.hitType}"
-                    )
                     Toast.makeText(this@AddWordActivity, "已由模型识别读音，可手动修改", Toast.LENGTH_SHORT).show()
                 },
-                onFailure = { throwable ->
+                onFailure = {
                     val fallbackReading = resolveResult.reading
                         ?.takeIf { it.isNotBlank() }
                         ?: inferReading(selected, start, end).takeIf { it.isNotBlank() }
-                    Log.d(
-                        TAG,
-                        "selection LLM failed hitType=${resolveResult.hitType} fallback=$fallbackReading error=${throwable.message ?: throwable.javaClass.simpleName}"
-                    )
                     readingInput.setText(fallbackReading.orEmpty())
                     Toast.makeText(
                         this@AddWordActivity,
                         if (fallbackReading.isNullOrBlank()) {
-                            "模型识别失败，请手动填写：${throwable.message ?: throwable.javaClass.simpleName}"
+                            "模型未能识别读音，请手动填写。"
                         } else {
-                            "模型识别失败，已使用本地兜底：${throwable.message ?: throwable.javaClass.simpleName}"
+                            "模型未能识别读音，已填入本地推断结果，请确认或修改。"
                         },
                         Toast.LENGTH_SHORT
                     ).show()
@@ -277,30 +255,6 @@ class AddWordActivity : Activity() {
         readingInput.requestFocus()
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(readingInput, InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun logResolveResult(
-        selected: String,
-        start: Int,
-        end: Int,
-        result: ResolveResult,
-        willCallLlm: Boolean,
-        finalReading: String?
-    ) {
-        val matchedHints = result.usedHints.joinToString(
-            separator = "; ",
-            prefix = "[",
-            postfix = "]"
-        ) { hint ->
-            "${hint.start}-${hint.end}:${hint.surface}/${hint.reading}"
-        }
-        Log.d(
-            TAG,
-            "selection sourceLength=${source.length}, start=$start, end=$end, selected=$selected, " +
-                "hintsCount=${readingHints.size}, matchedHints=$matchedHints, " +
-                "hitType=${result.hitType}, finalReading=${finalReading.orEmpty()}, " +
-                "shouldUseLlm=${result.shouldUseLlm}, willCallLlm=$willCallLlm, reason=${result.reason}"
-        )
     }
 
     private fun saveWord() {
@@ -322,9 +276,14 @@ class AddWordActivity : Activity() {
         if (wordId != null) {
             com.sosdanfurigana.data.WordMeaningFetcher.fetchIfMissing(applicationContext, wordId)
         }
-        Toast.makeText(this, "已加入单词本，团长顺手派模型去查释义了", Toast.LENGTH_SHORT).show()
-        finish()
+        Toast.makeText(
+            this,
+            "已加入单词本；API 配置可用时会在后台补充释义、词性和 JLPT 等级。",
+            Toast.LENGTH_SHORT
+        ).show()
+        AppMotion.finishContainerAfterSave(this)
     }
+
 
     private fun label(text: String): TextView {
         return TextView(this).apply {
@@ -860,7 +819,6 @@ class AddWordActivity : Activity() {
     companion object {
         const val EXTRA_SOURCE_TEXT = "source_text"
         const val EXTRA_READING_HINTS = "reading_hints"
-        private const val TAG = "AddWordActivity"
         private const val KATAKANA_TO_HIRAGANA_OFFSET = 0x60
         private const val SKIPPABLE_READING_CHARS =
             "、。，．・･!！?？「」『』（）()[]【】<>《》〈〉…‥〜～-—―/／\\|｜:：;；,.\"'“”‘’"
