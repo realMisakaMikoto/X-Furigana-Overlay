@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.sosdanfurigana.data.JlptLevelFilter
 import com.sosdanfurigana.data.ReviewScheduler
 import com.sosdanfurigana.data.WordMeaningFetcher
 import com.sosdanfurigana.data.WordbookEntry
@@ -37,8 +38,10 @@ class WordbookActivity : Activity() {
     private lateinit var tagFilters: LinearLayout
     private lateinit var reviewButton: Button
     private val filterButtons = mutableMapOf<Filter, Button>()
+    private val jlptFilterButtons = mutableMapOf<JlptLevelFilter, Button>()
     private var searchQuery = ""
     private var filter = Filter.ALL
+    private var jlptFilter = JlptLevelFilter.ALL
     private var selectedTag: String? = null
     private var sort = Sort.RECENT
 
@@ -67,7 +70,8 @@ class WordbookActivity : Activity() {
         root.addView(header())
         root.addView(reviewBanner(), matchWrap(top = 12))
         root.addView(searchBar(), matchHeight(48, top = 12))
-        root.addView(filterRow(), matchWrap(top = 10))
+        root.addView(jlptFilterRow(), matchWrap(top = 10))
+        root.addView(filterRow(), matchWrap(top = 8))
         tagFilters = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -199,6 +203,8 @@ class WordbookActivity : Activity() {
             isHorizontalScrollBarEnabled = false
             addView(LinearLayout(this@WordbookActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(filterLabel("状态"), wrapHeight(48, end = 8))
                 Filter.entries.forEach { item ->
                     addView(filterButton(item), wrapHeight(48, end = 8))
                 }
@@ -208,6 +214,50 @@ class WordbookActivity : Activity() {
                     setOnClickListener { showSortMenu(this) }
                 }, wrapHeight(48))
             })
+        }
+    }
+
+    private fun jlptFilterRow(): View {
+        return HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            contentDescription = "按 JLPT 等级筛选单词"
+            addView(LinearLayout(this@WordbookActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(filterLabel("等级"), wrapHeight(48, end = 8))
+                JlptLevelFilter.entries.forEach { item ->
+                    addView(jlptFilterButton(item), wrapHeight(48, end = 8))
+                }
+            })
+        }
+    }
+
+    private fun filterLabel(label: String): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(AppUi.HAIR_SOFT)
+            gravity = Gravity.CENTER
+            setPadding(dp(2), 0, dp(2), 0)
+        }
+    }
+
+    private fun jlptFilterButton(item: JlptLevelFilter): Button {
+        return Button(this).apply {
+            jlptFilterButtons[item] = this
+            text = item.label
+            contentDescription = if (item == JlptLevelFilter.ALL) {
+                "显示全部等级单词"
+            } else {
+                "只看 ${item.label} 单词"
+            }
+            if (jlptFilter == item) AppUi.secondary(this) else AppUi.ghost(this)
+            setOnClickListener {
+                jlptFilter = item
+                renderWords()
+                refreshJlptFilterStyles()
+            }
         }
     }
 
@@ -231,6 +281,12 @@ class WordbookActivity : Activity() {
         }
     }
 
+    private fun refreshJlptFilterStyles() {
+        jlptFilterButtons.forEach { (item, button) ->
+            if (jlptFilter == item) AppUi.secondary(button) else AppUi.ghost(button)
+        }
+    }
+
     private fun renderWords() {
         if (!::list.isInitialized) return
         val words = repository.getWords()
@@ -249,6 +305,7 @@ class WordbookActivity : Activity() {
         val variants = JapaneseSearch.expandQuery(searchQuery, readingPairs)
         val filtered = words
             .asSequence()
+            .filter { word -> jlptFilter.matches(word.jlptLevel) }
             .filter { word -> matchesFilter(word, now) }
             .filter { word -> selectedTag == null || selectedTag in word.tags }
             .filter { word ->
@@ -267,7 +324,11 @@ class WordbookActivity : Activity() {
             }
             .sortedWith(sort.comparator)
             .toList()
-        countText.text = "显示 ${filtered.size} / ${words.size} 个词"
+        countText.text = if (jlptFilter == JlptLevelFilter.ALL) {
+            "显示 ${filtered.size} / ${words.size} 个词"
+        } else {
+            "${jlptFilter.label} · 显示 ${filtered.size} / ${words.size} 个词"
+        }
         list.removeAllViews()
         if (filtered.isEmpty()) {
             list.addView(emptyState(words.isEmpty()))
